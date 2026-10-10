@@ -1,0 +1,28 @@
+name: lyriccar
+description: "LyricCar 歌词 —— 车机端歌词显示 App：读系统媒体会话（MediaSession），把播放器写进媒体信息的歌词一句句采集下来、本地保存，下次直接同步显示。"
+publish_to: "none"
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # 状态管理：与设置页 / 歌词库面板共享同一份采集状态
+  flutter_riverpod: ^3.4.2
+
+  # 歌词库存应用私有目录（<ApplicationSupport>/carlyric/lyrics.json）
+  path_provider: ^2.1.2
+
+  # 歌词库的导出 / 导入走系统文件选择器（SAF，不需要存储权限）
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

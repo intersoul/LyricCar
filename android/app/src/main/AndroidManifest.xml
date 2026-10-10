@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  LyricCar 歌词 —— 车机端歌词显示 App。
+
+  * 歌曲信息来自系统媒体会话（MediaSession），需要「通知使用权」而不是普通权限；
+  * 歌词本体存在应用私有目录里（不需要权限）；
+  * 导出 / 导入是**自己写系统「下载」目录** —— 这台 BYD 车机没有处理 SAF
+    「另存为」的 Activity（实测 resolve-activity 返回 no activity），所以只能在
+    Android 9 及以下申请 WRITE_EXTERNAL_STORAGE（Android 10 起走 MediaStore，
+    不需要权限）；
+  * 局域网传输是 App 自己起一个 HTTP 服务，所以要 INTERNET。
+
+  应用标识：com.homeweb.lyriccar（与之前的项目完全无关，
+  装到车机上和别的 App 并存，不会互相覆盖）。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 局域网传输：App 在车上起一个 HTTP 服务，手机连上来下载 / 上传歌词库。
+         不访问任何外部网络，但没有这个声明连监听端口都不行。 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- 导出到公共「下载」目录。Android 10 起改走 MediaStore，所以加了
+         maxSdkVersion —— 高版本系统上不申请这个没用的权限。 -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
+    <application
+        android:label="LyricCar 歌词"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:screenOrientation="sensorLandscape"
+            android:taskAffinity=""
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <!-- 车机是横屏：锁死横向（允许左右翻转），绝不竖过来。
+                 Dart 侧也有一道 SystemChrome.setPreferredOrientations，
+                 这里写上是为了在 Activity 起来的那一瞬间就是横的，不闪一帧竖屏。 -->
+            <meta-data
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/NormalTheme" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          「通知使用权」服务。
+
+          它一行通知都不处理，存在只为了一件事：Android 规定只有「已启用的
+          NotificationListenerService」才能通过 MediaSessionManager.getActiveSessions()
+          读到**其他 App** 的 MediaSession（也就是网易云 / QQ 音乐正在播哪首、
+          歌词写到哪一行）。没有它，这个 App 就是个瞎的歌词显示器。
+
+          声明必须带 BIND_NOTIFICATION_LISTENER_SERVICE 权限与
+          NotificationListenerService 接口的 intent-filter，系统才会认。
+        -->
+        <service
+            android:name=".MediaSessionListenerService"
+            android:label="LyricCar 歌词"
+            android:exported="false"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <!-- Don't delete the meta-data below.
+             This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+    </application>
+
+    <!-- Required to query activities that can process text, see:
+         https://developer.android.com/training/package-visibility and
+         https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT" />
+            <data android:mimeType="text/plain" />
+        </intent>
+    </queries>
+</manifest>

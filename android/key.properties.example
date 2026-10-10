@@ -1,0 +1,20 @@
+# 发布签名配置模板。
+#
+# 用法：把本文件复制成 android/key.properties（同目录），填上真实口令。
+# 真正的 key.properties **不要**进版本库（.gitignore 里已经排除了），
+# 更不要把口令贴到任何公开的地方。
+#
+# 字段：
+#   storeFile     密钥库文件，相对 android/app/ 的路径
+#   storePassword 密钥库口令
+#   keyAlias      密钥别名
+#   keyPassword   密钥口令（和密钥库口令相同即可）
+#
+# ⚠️ 一定备份好 lyriccar-release.jks 与这两个口令：
+#    丢了就再也签不出「同一个 App」，以后想升级只能让用户先卸载
+#    （车机上的歌词库也就会被一起清掉，记得先导出）。
+
+storePassword=改成你的密钥库口令
+keyPassword=改成你的密钥口令
+keyAlias=lyriccar
+storeFile=lyriccar-release.jks
