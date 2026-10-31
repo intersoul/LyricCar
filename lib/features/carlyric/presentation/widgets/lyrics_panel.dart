@@ -65,6 +65,10 @@ class _LyricsPanelState extends ConsumerState<LyricsPanel> {
     final fromStart = ref.watch(
       lyricSessionProvider.select((s) => s.fromStart),
     );
+    // 播放器不报播放位置了（见 LyricSessionState.derivedPosition）
+    final stale = ref.watch(
+      lyricSessionProvider.select((s) => s.positionStale),
+    );
     // 半份稿子回放中：还在一边放一边补
     final collecting = ref.watch(
       lyricSessionProvider.select(
@@ -87,6 +91,7 @@ class _LyricsPanelState extends ConsumerState<LyricsPanel> {
             count: lines.length,
             complete: complete,
             fromStart: fromStart,
+            positionStale: stale,
           ),
           Expanded(
             child: lines.isNotEmpty
@@ -188,6 +193,7 @@ class _CaptureBanner extends StatelessWidget {
     required this.count,
     required this.complete,
     required this.fromStart,
+    required this.positionStale,
   });
 
   final int count;
@@ -196,12 +202,26 @@ class _CaptureBanner extends StatelessWidget {
   /// false = 这次是从中间开始听的，开头那几句没采到。
   final bool fromStart;
 
+  /// 播放器不再上报播放位置 —— 这时候采不了（每句都会记成同一个假时间戳）。
+  final bool positionStale;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    // 三种情况要分清楚，不然后半段听着没问题、用户根本不知道丢了开头：
-    //   缺开头 > 没放完 > 已收工
+    // 几种情况要分清楚，不然后半段听着没问题、用户根本不知道丢了开头。
+    // 优先级：播放器罢工 > 缺开头 > 没放完 > 已收工
+    if (positionStale) {
+      return _banner(
+        context,
+        theme,
+        icon: Icons.wifi_tethering_off,
+        text:
+            '播放器不再上报播放位置，这一遍先不采集'
+            '（每句都会记成同一个时间点，存下来没用）\n'
+            '已经存过的歌照常滚动显示；换首歌或重连蓝牙后会自动恢复。',
+      );
+    }
     final (icon, text) = !fromStart
         ? (
             Icons.content_cut,
@@ -212,6 +232,15 @@ class _CaptureBanner extends StatelessWidget {
         ? (Icons.check_circle_outline, '这首歌的歌词已经采集完整，下次播放直接显示')
         : (Icons.record_voice_over_outlined, '第一遍听：正在一边播一边采集歌词（已 $count 句）');
 
+    return _banner(context, theme, icon: icon, text: text);
+  }
+
+  Widget _banner(
+    BuildContext context,
+    ThemeData theme, {
+    required IconData icon,
+    required String text,
+  }) {
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.fromLTRB(24, 20, 24, 0),

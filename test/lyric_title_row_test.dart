@@ -26,6 +26,9 @@ class _FakeSink implements LyricSink {
   void put(StoredSong song) => songs[song.key] = song;
 
   @override
+  Iterable<StoredSong> get all => songs.values;
+
+  @override
   bool remove(String key) => songs.remove(key) != null;
 
   @override
@@ -68,17 +71,15 @@ void main() {
         _titleLyric('把表情收拢我装的酷得像周董', position: const Duration(seconds: 2)),
       );
       engine.handle(
-        _titleLyric(
-          '然后在一个人的时候打开窗让空气流通',
-          position: const Duration(seconds: 5),
-        ),
+        _titleLyric('然后在一个人的时候打开窗让空气流通', position: const Duration(seconds: 5)),
       );
 
       // 歌曲名行模式下不丢基线：那一行从头到尾都是歌词，第一眼就该收下
-      expect(
-        engine.state.lines.map((line) => line.text),
-        ['把玩笑尽量开得每个人都懂', '把表情收拢我装的酷得像周董', '然后在一个人的时候打开窗让空气流通'],
-      );
+      expect(engine.state.lines.map((line) => line.text), [
+        '把玩笑尽量开得每个人都懂',
+        '把表情收拢我装的酷得像周董',
+        '然后在一个人的时候打开窗让空气流通',
+      ]);
       expect(
         engine.state.lines.map((line) => line.text).contains(_artist),
         isFalse,
@@ -94,12 +95,8 @@ void main() {
       );
 
       engine.handle(_titleLyric('第一句'));
-      engine.handle(
-        _titleLyric('第二句', position: const Duration(seconds: 3)),
-      );
-      engine.handle(
-        _titleLyric('第二句', position: const Duration(seconds: 4)),
-      );
+      engine.handle(_titleLyric('第二句', position: const Duration(seconds: 3)));
+      engine.handle(_titleLyric('第二句', position: const Duration(seconds: 4)));
 
       expect(engine.state.lines.length, 2);
       expect(engine.state.lines.last.text, '第二句');
@@ -113,9 +110,7 @@ void main() {
       );
 
       engine.handle(_titleLyric('第一句'));
-      engine.handle(
-        _titleLyric('第二句', position: const Duration(seconds: 3)),
-      );
+      engine.handle(_titleLyric('第二句', position: const Duration(seconds: 3)));
 
       final expected = titleRowSongKey(
         artist: _artist,
@@ -150,18 +145,12 @@ void main() {
 
       // 下一首：同专辑同歌手，但时长不同
       const nextDuration = Duration(milliseconds: 231000);
-      final next = engine.handle(
-        _titleLyric('第二首的开头', duration: nextDuration),
-      );
+      final next = engine.handle(_titleLyric('第二首的开头', duration: nextDuration));
 
       expect(next.song!.key, isNot(firstKey), reason: '不同曲必须是不同记录');
       expect(next.lines.map((line) => line.text), ['第二首的开头']);
       expect(sink.songs.length, 2);
-      expect(
-        sink.find(firstKey)!.lines.length,
-        3,
-        reason: '上一首的歌词不能被搬走',
-      );
+      expect(sink.find(firstKey)!.lines.length, 3, reason: '上一首的歌词不能被搬走');
     });
 
     test('时长是后到的（0 → 已知）→ 仍算同一首歌，只换 key 不换歌', () {
@@ -173,7 +162,11 @@ void main() {
 
       engine.handle(_titleLyric('甲句', duration: Duration.zero));
       engine.handle(
-        _titleLyric('乙句', duration: Duration.zero, position: const Duration(seconds: 3)),
+        _titleLyric(
+          '乙句',
+          duration: Duration.zero,
+          position: const Duration(seconds: 3),
+        ),
       );
       expect(engine.state.lines.length, 2);
 
@@ -183,11 +176,7 @@ void main() {
       expect(known.lines.length, 3, reason: '已采的歌词要跟着搬过来');
       expect(
         known.song!.key,
-        titleRowSongKey(
-          artist: _artist,
-          album: _album,
-          duration: _duration,
-        ),
+        titleRowSongKey(artist: _artist, album: _album, duration: _duration),
       );
       expect(sink.songs.length, 1, reason: '旧的 xx|0 残档要清掉');
     });
@@ -199,21 +188,13 @@ void main() {
       final engine = LyricCaptureEngine(sink: sink); // 默认 auto
 
       engine.handle(_titleLyric('第一句歌词', position: Duration.zero));
-      engine.handle(
-        _titleLyric('第二句歌词', position: const Duration(seconds: 3)),
-      );
-      engine.handle(
-        _titleLyric('第三句歌词', position: const Duration(seconds: 6)),
-      );
+      engine.handle(_titleLyric('第二句歌词', position: const Duration(seconds: 3)));
+      engine.handle(_titleLyric('第三句歌词', position: const Duration(seconds: 6)));
 
       expect(engine.state.lines, isNotEmpty, reason: '应该已经认出来并开始采了');
       expect(
         engine.state.song!.key,
-        titleRowSongKey(
-          artist: _artist,
-          album: _album,
-          duration: _duration,
-        ),
+        titleRowSongKey(artist: _artist, album: _album, duration: _duration),
         reason: '认出来之后要用「歌手 + 专辑 + 时长」认歌，不能用歌曲名',
       );
     });
@@ -226,23 +207,28 @@ void main() {
       final engine = LyricCaptureEngine(sink: sink); // 默认 auto
 
       engine.handle(
-        _titleLyric('只要我不问就代表不用你回答',
-            position: const Duration(milliseconds: 181006)),
+        _titleLyric(
+          '只要我不问就代表不用你回答',
+          position: const Duration(milliseconds: 181006),
+        ),
       );
       engine.handle(
-        _titleLyric('如果我错了那就错在玩 hiphop',
-            position: const Duration(milliseconds: 180943)),
+        _titleLyric(
+          '如果我错了那就错在玩 hiphop',
+          position: const Duration(milliseconds: 180943),
+        ),
       );
       engine.handle(
-        _titleLyric('想买辆代步车它就是不降价',
-            position: const Duration(milliseconds: 183292)),
+        _titleLyric(
+          '想买辆代步车它就是不降价',
+          position: const Duration(milliseconds: 183292),
+        ),
       );
 
-      expect(
-        engine.state.lines.map((line) => line.text),
-        ['如果我错了那就错在玩 hiphop', '想买辆代步车它就是不降价'],
-        reason: '这点抖动不能当成换歌',
-      );
+      expect(engine.state.lines.map((line) => line.text), [
+        '如果我错了那就错在玩 hiphop',
+        '想买辆代步车它就是不降价',
+      ], reason: '这点抖动不能当成换歌');
       expect(
         engine.state.song!.key,
         titleRowSongKey(artist: _artist, album: _album, duration: _duration),
@@ -386,7 +372,11 @@ void main() {
       final engine = LyricCaptureEngine(sink: sink);
 
       // 用户一首一首地跳：每首放到两三秒就切下一首，位置每次都回到开头
-      for (final (name, seconds) in [('第一首', 200), ('第二首', 215), ('第三首', 187)]) {
+      for (final (name, seconds) in [
+        ('第一首', 200),
+        ('第二首', 215),
+        ('第三首', 187),
+      ]) {
         engine.handle(
           MediaInfo(
             hasSession: true,
@@ -401,11 +391,7 @@ void main() {
       }
 
       expect(engine.state.lines, isEmpty, reason: '这些都是歌名，不是歌词');
-      expect(
-        sink.songs,
-        isEmpty,
-        reason: '一句都没采到就不该往歌词库里写记录（否则切歌一快就堆一堆空壳）',
-      );
+      expect(sink.songs, isEmpty, reason: '一句都没采到就不该往歌词库里写记录（否则切歌一快就堆一堆空壳）');
     });
   });
 
@@ -434,7 +420,9 @@ void main() {
       final sink = _FakeSink();
       final engine = LyricCaptureEngine(sink: sink); // 默认 auto
 
-      engine.handle(push('Steve Hackett/John Hackett', const Duration(milliseconds: 1916)));
+      engine.handle(
+        push('Steve Hackett/John Hackett', const Duration(milliseconds: 1916)),
+      );
       engine.handle(
         push(
           'Gymnopedie No. 1 - Steve Hackett/John Hackett',
@@ -447,13 +435,25 @@ void main() {
     });
 
     test('歌词行里出现「歌曲名 - xxx」形状的句子才拦得住', () {
-      expect(looksLikeTitleArtistLine('Gymnopedie No. 1 - Steve Hackett', 'Gymnopedie No. 1'), isTrue);
+      expect(
+        looksLikeTitleArtistLine(
+          'Gymnopedie No. 1 - Steve Hackett',
+          'Gymnopedie No. 1',
+        ),
+        isTrue,
+      );
       expect(looksLikeTitleArtistLine('烂人生 - 泥鳅zinco', '烂人生'), isTrue);
       // 下面这些是正经句子，不能拦
       expect(looksLikeTitleArtistLine('♪ 狼牙月伊人憔悴 ♪', '发如雪'), isFalse);
       expect(looksLikeTitleArtistLine('晴天下起雨', '晴天'), isFalse);
-      expect(looksLikeTitleArtistLine('作曲: Yiruma', 'River Flows in You'), isFalse);
-      expect(looksLikeTitleArtistLine('Gymnopedie No. 1 主题变奏', 'Gymnopedie No. 1'), isFalse);
+      expect(
+        looksLikeTitleArtistLine('作曲: Yiruma', 'River Flows in You'),
+        isFalse,
+      );
+      expect(
+        looksLikeTitleArtistLine('Gymnopedie No. 1 主题变奏', 'Gymnopedie No. 1'),
+        isFalse,
+      );
     });
   });
 

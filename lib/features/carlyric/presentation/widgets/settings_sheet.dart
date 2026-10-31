@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/lyric_capture_engine.dart';
 import '../providers/carlyric_providers.dart';
+import 'diagnostics_sheet.dart';
 
 Future<void> showSettingsSheet(BuildContext context) {
   return showModalBottomSheet<void>(
@@ -39,42 +40,50 @@ class _SettingsSheet extends ConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-            Text('设置', style: theme.textTheme.titleLarge),
-            const SizedBox(height: 20),
-            Text(
-              '歌词写在',
-              style: theme.textTheme.titleMedium!.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+              Text('设置', style: theme.textTheme.titleLarge),
+              const SizedBox(height: 20),
+              Text(
+                '歌词写在',
+                style: theme.textTheme.titleMedium!.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
-            ),
-            const SizedBox(height: 10),
-            for (final field in LyricFieldPreference.values)
-              _OptionTile(
-                label: field.label,
-                selected: settings.field == field,
-                onTap: () => controller.setField(field),
+              const SizedBox(height: 10),
+              for (final field in LyricFieldPreference.values)
+                _OptionTile(
+                  label: field.label,
+                  selected: settings.field == field,
+                  onTap: () => controller.setField(field),
+                ),
+              const SizedBox(height: 12),
+              Text(
+                '不确定就留「自动判断」：App 会看着标题、歌手、专辑三行，自己认歌词写在\n'
+                '哪一行 —— 哔哩音乐这类写在歌手行的，和网易云 / QQ 音乐这类写在歌曲名行\n'
+                '的，都能认出来。\n'
+                '真认不出来时再手动指定 —— 左侧面板能直接看到这三行的原始内容，\n'
+                '歌词写在哪一行一目了然。',
+                style: theme.textTheme.bodyMedium!.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  height: 1.5,
+                ),
               ),
-            const SizedBox(height: 12),
-            Text(
-              '不确定就留「自动判断」：App 会看着标题、歌手、专辑三行，自己认歌词写在\n'
-              '哪一行 —— 哔哩音乐这类写在歌手行的，和网易云 / QQ 音乐这类写在歌曲名行\n'
-              '的，都能认出来。\n'
-              '真认不出来时再手动指定 —— 左侧面板能直接看到这三行的原始内容，\n'
-              '歌词写在哪一行一目了然。',
-              style: theme.textTheme.bodyMedium!.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                height: 1.5,
+              const SizedBox(height: 22),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: settings.keepScreenOn,
+                onChanged: controller.setKeepScreenOn,
+                title: const Text('歌词界面保持常亮'),
+                subtitle: const Text('看歌词时不自动熄屏（只是不熄屏，不额外耗电）'),
               ),
-            ),
-            const SizedBox(height: 22),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              value: settings.keepScreenOn,
-              onChanged: controller.setKeepScreenOn,
-              title: const Text('歌词界面保持常亮'),
-              subtitle: const Text('看歌词时不自动熄屏（只是不熄屏，不额外耗电）'),
-            ),
-          ],
+              const Divider(height: 28),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.bug_report_outlined),
+                title: const Text('诊断日志'),
+                subtitle: const Text('换了车机不出歌词时，导出来发我 —— 有系统版本和原始元数据'),
+                onTap: () => showDiagnosticsSheet(context),
+              ),
+            ],
           ),
         ),
       ),

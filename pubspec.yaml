@@ -2,7 +2,7 @@ name: lyriccar
 description: "LyricCar 歌词 —— 车机端歌词显示 App：读系统媒体会话（MediaSession），把播放器写进媒体信息的歌词一句句采集下来、本地保存，下次直接同步显示。"
 publish_to: "none"
 
-version: 1.0.0+1
+version: 1.0.1+2
 
 environment:
   sdk: ^3.13.0

@@ -50,9 +50,7 @@ class _LibrarySheet extends ConsumerWidget {
                 ),
                 const Spacer(),
                 TextButton.icon(
-                  onPressed: songs.isEmpty
-                      ? null
-                      : () => _export(context, ref),
+                  onPressed: songs.isEmpty ? null : () => _export(context, ref),
                   icon: const Icon(Icons.ios_share, size: 18),
                   label: const Text('导出到下载'),
                 ),
@@ -184,12 +182,7 @@ class _SongTile extends ConsumerWidget {
     final subtitle = <String>[
       if (song.artist.isNotEmpty) song.artist,
       '${song.lines.length} 句',
-      if (song.ready)
-        '完整'
-      else if (!song.fromStart)
-        '缺开头'
-      else
-        '未采完',
+      if (song.ready) '完整' else if (!song.fromStart) '缺开头' else '未采完',
       song.source.label,
     ].join(' · ');
 
@@ -202,7 +195,11 @@ class _SongTile extends ConsumerWidget {
             ? theme.colorScheme.primary
             : theme.colorScheme.onSurfaceVariant,
       ),
-      title: Text(song.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+      title: Text(
+        song.displayName,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
       subtitle: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
       onTap: () => _preview(context),
       trailing: IconButton(

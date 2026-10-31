@@ -25,9 +25,12 @@ abstract interface class LyricLibrary {
 }
 
 class LyricLanServer {
-  LyricLanServer({required this.store});
+  LyricLanServer({required this.store, this.log});
 
   final LyricLibrary store;
+
+  /// 诊断日志（给远程排查用）。传 null 就不提供那一段。
+  final Future<String> Function()? log;
 
   HttpServer? _server;
   int? _requestCount;
@@ -45,7 +48,8 @@ class LyricLanServer {
     final server = _server;
     if (server == null) return const [];
     return [
-      for (final address in lanAddresses) 'http://${address.address}:${server.port}',
+      for (final address in lanAddresses)
+        'http://${address.address}:${server.port}',
     ];
   }
 
@@ -78,7 +82,14 @@ class LyricLanServer {
   /// 实测这台 BYD 车机同时挂着 wlan0(10.35.199.116/24) 和 ccmni0/1/2
   /// (10.210.x、12.167.x、10.41.x) —— 全列出来的话，用户多半会复制错那个。
   static const List<String> _cellularPrefixes = [
-    'ccmni', 'rmnet', 'pdp', 'wwan', 'ppp', 'clat', 'tun', 'rmnet_data',
+    'ccmni',
+    'rmnet',
+    'pdp',
+    'wwan',
+    'ppp',
+    'clat',
+    'tun',
+    'rmnet_data',
   ];
 
   /// 从网卡列表里挑出该显示的地址：排除蜂窝、排除回环和非私有网段，
@@ -139,6 +150,8 @@ class LyricLanServer {
         await _send(_page(), request);
       } else if (request.method == 'GET' && path == '/lyriccar.json') {
         await _sendJson(store.exportJson(), request);
+      } else if (request.method == 'GET' && path == '/diagnostics.txt') {
+        await _sendText(await (log?.call() ?? Future.value('（没有日志）')), request);
       } else if (request.method == 'POST' && path == '/import') {
         await _import(request);
       } else {
@@ -161,6 +174,23 @@ class LyricLanServer {
     request.response.headers.set(
       'Content-Disposition',
       'attachment; filename="${lyricExportFileName()}"',
+    );
+    request.response.headers.contentLength = bytes.length;
+    request.response.add(bytes);
+    await request.response.close();
+  }
+
+  /// 纯文本（诊断日志）：浏览器直接下载，手机上也能存进「文件」。
+  Future<void> _sendText(String body, HttpRequest request) async {
+    final bytes = utf8.encode(body);
+    request.response.headers.contentType = ContentType(
+      'text',
+      'plain',
+      charset: 'utf-8',
+    );
+    request.response.headers.set(
+      'Content-Disposition',
+      'attachment; filename="lyriccar-log.txt"',
     );
     request.response.headers.contentLength = bytes.length;
     request.response.add(bytes);
@@ -194,7 +224,8 @@ class LyricLanServer {
     }
     await _send(
       _page(
-        message: '导入完成：新增 ${result.added} 首，更新 ${result.updated} 首，'
+        message:
+            '导入完成：新增 ${result.added} 首，更新 ${result.updated} 首，'
             '跳过 ${result.skipped} 首。现在这台车上有 ${store.count} 首歌词。',
       ),
       request,
@@ -245,7 +276,10 @@ class LyricLanServer {
           body[contentEnd - 1] == 10) {
         contentEnd -= 2;
       }
-      return utf8.decode(body.sublist(split + 4, contentEnd), allowMalformed: true);
+      return utf8.decode(
+        body.sublist(split + 4, contentEnd),
+        allowMalformed: true,
+      );
     }
     return null;
   }
@@ -336,6 +370,13 @@ class LyricLanServer {
     <input type="file" name="file" accept=".json,application/json" required>
     <button type="submit">上传并导入</button>
   </form>
+
+  ${log == null ? '' : '''
+  <h2>③ 把诊断日志发给开发者</h2>
+  <p class="sub">换了车机发现不显示歌词时，下载这个 <code>.txt</code> 发过来就行 ——
+  里面有系统版本、通知使用权、以及这台车机上每个播放器暴露的元数据。</p>
+  <a class="btn" href="/diagnostics.txt" download>下载诊断日志（lyriccar-log.txt）</a>
+  '''}
 
   <p class="tip">传输期间别退出车上的 App（页面就是它在提供）。传完可以关掉这个页面。</p>
 </body>

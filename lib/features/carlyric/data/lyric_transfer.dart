@@ -51,6 +51,14 @@ String lyricExportFileName([DateTime? now]) {
       '-${two(at.hour)}${two(at.minute)}.json';
 }
 
+/// 诊断日志导出时用的文件名。
+String diagnosticsFileName([DateTime? now]) {
+  final at = now ?? DateTime.now();
+  String two(int value) => value.toString().padLeft(2, '0');
+  return 'lyriccar-log-${at.year}${two(at.month)}${two(at.day)}'
+      '-${two(at.hour)}${two(at.minute)}${two(at.second)}.txt';
+}
+
 /// 导出 / 导入失败时抛这个，[message] 是能直接显示给用户的中文。
 class LyricTransferException implements Exception {
   const LyricTransferException(this.message);
@@ -93,7 +101,8 @@ class LyricTransfer {
   static Future<List<DownloadedFile>> listDownloads() async {
     try {
       final raw =
-          await _channel.invokeMethod<List<Object?>>('listDownloads') ?? const [];
+          await _channel.invokeMethod<List<Object?>>('listDownloads') ??
+          const [];
       return raw.map(DownloadedFile.fromMap).toList();
     } on PlatformException catch (error) {
       throw LyricTransferException(_message(error));

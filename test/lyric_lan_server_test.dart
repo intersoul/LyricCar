@@ -50,23 +50,28 @@ class _MemoryStore implements LyricLibrary {
     }
     return ImportResult(added: added, updated: 0, skipped: 0);
   }
-
 }
 
 StoredSong _song(String title, int seconds, List<int> lines) => StoredSong(
-  key: songKey(title: title, duration: Duration(seconds: seconds)),
+  key: songKey(
+    title: title,
+    duration: Duration(seconds: seconds),
+  ),
   title: title,
   duration: Duration(seconds: seconds),
   complete: true,
   fromStart: true,
-  lines: [for (final at in lines) LyricLine(timeMs: at * 1000, text: '第 $at 秒')],
+  lines: [
+    for (final at in lines) LyricLine(timeMs: at * 1000, text: '第 $at 秒'),
+  ],
 );
 
 void main() {
   group('multipart 解析', () {
     /// 照着浏览器 <input type="file"> 发出来的那份表单拼一个。
     List<int> multipartBody(String boundary, String fileName, String content) {
-      final body = '--$boundary\r\n'
+      final body =
+          '--$boundary\r\n'
           'Content-Disposition: form-data; name="file"; filename="$fileName"\r\n'
           'Content-Type: application/json\r\n'
           '\r\n'
@@ -77,7 +82,11 @@ void main() {
 
     test('能把文件内容抠出来', () {
       const boundary = '----WebKitFormBoundaryABC123';
-      final body = multipartBody(boundary, 'lyriccar-2026.json', '{"songs":[]}');
+      final body = multipartBody(
+        boundary,
+        'lyriccar-2026.json',
+        '{"songs":[]}',
+      );
       final content = LyricLanServer.extractMultipartFile(
         body,
         'multipart/form-data; boundary=$boundary',
@@ -90,7 +99,10 @@ void main() {
       const content = '{"songs":[{"title":"夜曲 - 周杰伦","lines":["一句中文歌词"]}]}';
       final body = multipartBody(boundary, '歌词库.json', content);
       expect(
-        LyricLanServer.extractMultipartFile(body, 'multipart/form-data; boundary=$boundary'),
+        LyricLanServer.extractMultipartFile(
+          body,
+          'multipart/form-data; boundary=$boundary',
+        ),
         content,
       );
     });
@@ -116,7 +128,10 @@ void main() {
         '--$boundary--\r\n',
       );
       expect(
-        LyricLanServer.extractMultipartFile(body, 'multipart/form-data; boundary=$boundary'),
+        LyricLanServer.extractMultipartFile(
+          body,
+          'multipart/form-data; boundary=$boundary',
+        ),
         isNull,
       );
     });
@@ -131,7 +146,10 @@ void main() {
     setUp(() async {
       store = _MemoryStore();
       store.songs['a'] = _song('夜曲', 180, [5, 30, 60]);
-      server = LyricLanServer(store: store);
+      server = LyricLanServer(
+        store: store,
+        log: () async => '[10:00:00.000] 假日志：SDK 23',
+      );
       await server.start();
       client = HttpClient();
       base = 'http://127.0.0.1:${server.port}';
@@ -149,6 +167,19 @@ void main() {
       expect(response.body, contains('<b>1</b>'));
       expect(response.body, contains('/lyriccar.json'), reason: '要有下载入口');
       expect(response.body, contains('action="/import"'), reason: '要有上传入口');
+      expect(
+        response.body,
+        contains('/diagnostics.txt'),
+        reason: '远程测试的人要能把诊断日志带走',
+      );
+    });
+
+    test('下载诊断日志：纯文本 + 附件', () async {
+      final response = await _get(client, '$base/diagnostics.txt');
+      expect(response.status, 200);
+      expect(response.body, contains('假日志：SDK 23'));
+      expect(response.disposition, contains('attachment'));
+      expect(response.disposition, contains('.txt'));
     });
 
     test('下载歌词库：是带附件的 JSON', () async {
@@ -174,12 +205,21 @@ void main() {
         '--$boundary--\r\n',
       );
 
-      final response = await _post(client, '$base/import', body,
-          'multipart/form-data; boundary=$boundary');
+      final response = await _post(
+        client,
+        '$base/import',
+        body,
+        'multipart/form-data; boundary=$boundary',
+      );
       expect(response.status, 200);
       expect(response.body, contains('新增 1 首'));
       expect(store.count, 2, reason: '原来那首还在，新的并进来');
-      expect(store.songs.containsKey(songKey(title: '发如雪', duration: const Duration(seconds: 240))), isTrue);
+      expect(
+        store.songs.containsKey(
+          songKey(title: '发如雪', duration: const Duration(seconds: 240)),
+        ),
+        isTrue,
+      );
     });
 
     test('直接 POST 一段 JSON 也收（方便用 curl 传）', () async {

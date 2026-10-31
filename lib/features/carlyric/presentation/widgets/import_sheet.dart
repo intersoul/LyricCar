@@ -79,9 +79,8 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
       await _reload();
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('删除失败：$error')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('删除失败：$error')));
     }
   }
 

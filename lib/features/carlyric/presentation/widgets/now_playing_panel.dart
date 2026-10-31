@@ -37,9 +37,9 @@ class NowPlayingPanel extends ConsumerWidget {
       lyricSessionProvider.select((s) => s.media.hasTrack),
     );
     final art = ref.watch(lyricSessionProvider.select((s) => s.media.artBytes));
-    final playing = ref.watch(
-      lyricSessionProvider.select((s) => s.media.playing),
-    );
+    // 用 playingNow 而不是 media.playing：车机蓝牙协议栈有时把状态报成「暂停」，
+    // 可歌词明明在往前走（真机遇到过，见 LyricSessionState.derivedPosition）。
+    final playing = ref.watch(lyricSessionProvider.select((s) => s.playingNow));
     final mode = ref.watch(lyricSessionProvider.select((s) => s.mode));
     final storedCount = ref.watch(
       lyricSessionProvider.select((s) => s.storedCount),
@@ -254,8 +254,10 @@ class _ProgressRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // 位置优先用引擎兜底算出来的：播放器卡住不报位置时（位置永远等于时长），
+    // 直接用它会让进度条永远满、两边时间一样（车主截图反馈的就是这个）。
     final position = ref.watch(
-      lyricSessionProvider.select((s) => s.media.position),
+      lyricSessionProvider.select((s) => s.derivedPosition ?? s.media.position),
     );
     final duration = ref.watch(
       lyricSessionProvider.select((s) => s.media.duration),
@@ -263,9 +265,13 @@ class _ProgressRow extends ConsumerWidget {
     final theme = Theme.of(context);
 
     final total = duration.inMilliseconds;
+    // 位置比时长还大（协议栈的僵尸值）时按时长算，别让左边时间比右边大
+    final shown = total > 0 && position.inMilliseconds > total
+        ? duration
+        : position;
     final value = total <= 0
         ? 0.0
-        : (position.inMilliseconds / total).clamp(0.0, 1.0);
+        : (shown.inMilliseconds / total).clamp(0.0, 1.0);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -289,7 +295,7 @@ class _ProgressRow extends ConsumerWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(_fmt(position), style: theme.textTheme.bodyMedium),
+              Text(_fmt(shown), style: theme.textTheme.bodyMedium),
               Text(
                 total <= 0 ? '--:--' : _fmt(duration),
                 style: theme.textTheme.bodyMedium,

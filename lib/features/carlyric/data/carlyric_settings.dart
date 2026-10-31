@@ -63,9 +63,8 @@ class CarlyricSettings {
     try {
       final dir = directory ?? await carlyricDirectory();
       if (!dir.existsSync()) dir.createSync(recursive: true);
-      await File(
-        '${dir.path}/$_fileName',
-      ).writeAsString(jsonEncode(toJson()), flush: true);
+      await File('${dir.path}/$_fileName')
+          .writeAsString(jsonEncode(toJson()), flush: true);
     } catch (error) {
       debugPrint('设置写入失败：$error');
     }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/theme/app_theme.dart';
+import 'features/carlyric/data/diagnostics.dart';
 import 'features/carlyric/presentation/pages/carlyric_page.dart';
 import 'features/carlyric/presentation/providers/carlyric_providers.dart';
 
@@ -28,12 +29,22 @@ class _AppState extends ConsumerState<App> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  /// 采集时歌词库并不是每一句都写盘（连续变化会合并成每 8 秒一次），
-  /// 所以**离开前台前补一刀**：熄火、切到别的 App、被系统回收都不会丢句子。
+  /// 两个方向都有事要做：
+  ///   * 离开前台：采集时歌词库不是每句都写盘（合并成每 8 秒一次），
+  ///     这时补一刀，熄火 / 被系统回收都不会丢句子；日志同理。
+  ///   * 回到前台：用户很可能刚去系统设置里把「通知使用权」打开 —— 再跑一次
+  ///     环境自查，远程测试的人导出的日志里就能看到权限和会话的前后变化。
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) return;
+    if (state == AppLifecycleState.resumed) {
+      final diagnostics = Diagnostics.current;
+      if (diagnostics != null) {
+        diagnostics.selfCheck(ref.read(mediaSessionChannelProvider));
+      }
+      return;
+    }
     ref.read(lyricStoreProvider).flush();
+    Diagnostics.current?.flush();
   }
 
   @override

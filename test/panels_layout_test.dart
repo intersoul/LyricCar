@@ -36,6 +36,11 @@ LyricSessionState _state({
   bool complete = true,
   bool fromStart = true,
   bool collecting = false,
+  Duration? derivedPosition,
+  bool playingNow = true,
+  bool positionStale = false,
+  Duration position = const Duration(seconds: 30),
+  bool mediaPlaying = true,
 }) => LyricSessionState(
   song: lines.isEmpty
       ? null
@@ -56,13 +61,17 @@ LyricSessionState _state({
     artist: '♪ 一句歌词 ♪',
     album: '哔哩音乐',
     duration: const Duration(minutes: 3),
-    position: const Duration(seconds: 30),
+    position: position,
+    playing: mediaPlaying,
   ),
   mode: mode,
   lines: lines,
   currentIndex: currentIndex,
   complete: complete,
   collecting: collecting,
+  derivedPosition: derivedPosition,
+  playingNow: playingNow,
+  positionStale: positionStale,
 );
 
 Future<void> _pump(
@@ -138,6 +147,109 @@ void main() {
         state: _state(title: '夜曲'),
       );
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('播放器不报位置时的提示', () {
+    testWidgets('采集模式下要说清「这一遍先不采集」，而不是干等着', (tester) async {
+      await _pump(
+        tester,
+        const LyricsPanel(),
+        state: _state(
+          mode: LyricMode.capturing,
+          lines: const [LyricLine(timeMs: 0, text: '第一句')],
+          currentIndex: 0,
+          complete: false,
+          positionStale: true,
+        ),
+      );
+
+      expect(find.textContaining('不再上报播放位置'), findsOneWidget);
+      expect(tester.takeException(), isNull, reason: '多一行字也不能溢出');
+    });
+
+    testWidgets('位置正常时不出现这条提示', (tester) async {
+      await _pump(
+        tester,
+        const LyricsPanel(),
+        state: _state(
+          mode: LyricMode.capturing,
+          lines: const [LyricLine(timeMs: 0, text: '第一句')],
+          currentIndex: 0,
+          complete: false,
+        ),
+      );
+
+      expect(find.textContaining('不再上报播放位置'), findsNothing);
+      expect(find.textContaining('正在一边播一边采集'), findsOneWidget);
+    });
+  });
+
+  group('播放器不报位置时的兜底显示', () {
+    testWidgets('位置卡在时长上 → 用歌词时间戳显示，进度条不再永远满', (tester) async {
+      await _pump(
+        tester,
+        const SizedBox(width: 465, child: NowPlayingPanel()),
+        state: _state(
+          title: '夜曲',
+          mode: LyricMode.replay,
+          lines: const [
+            LyricLine(timeMs: 0, text: '第一句'),
+            LyricLine(timeMs: 90000, text: '第二句'),
+          ],
+          currentIndex: 1,
+          derivedPosition: const Duration(seconds: 90),
+          positionStale: true,
+        ),
+      );
+
+      // 媒体里报的位置是 30 秒（不够极端），这里直接验派生位置生效
+      expect(find.text('1:30'), findsOneWidget, reason: '左边显示歌词推算的位置');
+      expect(find.text('3:00'), findsOneWidget, reason: '右边还是时长');
+    });
+
+    testWidgets('播放器说暂停、但歌词在走 → 按钮显示「暂停」', (tester) async {
+      await _pump(
+        tester,
+        const SizedBox(width: 465, child: NowPlayingPanel()),
+        state: _state(
+          title: '夜曲',
+          mediaPlaying: false, // 协议栈把状态报成暂停
+          playingNow: true, // 但歌词在往前走
+        ),
+      );
+      expect(
+        find.byIcon(Icons.pause),
+        findsOneWidget,
+        reason: '音乐明明在放，按钮不能显示成「播放」',
+      );
+      expect(find.byIcon(Icons.play_arrow), findsNothing);
+    });
+
+    testWidgets('playingNow 为 false 时按钮是「播放」', (tester) async {
+      await _pump(
+        tester,
+        const SizedBox(width: 465, child: NowPlayingPanel()),
+        state: _state(title: '夜曲', playingNow: false),
+      );
+      expect(
+        find.byIcon(Icons.play_arrow),
+        findsOneWidget,
+        reason: '真的暂停了就该显示播放',
+      );
+    });
+
+    testWidgets('位置比时长还大（协议栈的僵尸值）→ 左边时间不会超过右边', (tester) async {
+      await _pump(
+        tester,
+        const SizedBox(width: 465, child: NowPlayingPanel()),
+        state: _state(
+          title: '夜曲',
+          position: const Duration(minutes: 5), // 比 3 分钟的时长还大
+        ),
+      );
+      expect(find.text('3:00'), findsNWidgets(2), reason: '两边都按时长封顶');
+      expect(find.text('5:00'), findsNothing);
     });
   });
 

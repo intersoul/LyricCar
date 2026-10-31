@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 StoredSong _song({
   required String title,
+  String songName = '',
   Duration duration = const Duration(minutes: 3),
   bool complete = true,
   bool fromStart = true,
@@ -17,6 +18,7 @@ StoredSong _song({
 }) => StoredSong(
   key: songKey(title: title, duration: duration),
   title: title,
+  songName: songName,
   artist: '歌手',
   duration: duration,
   complete: complete,
@@ -27,6 +29,29 @@ StoredSong _song({
       LyricLine(timeMs: i * 5000, text: texts[i]),
   ],
 );
+
+/// 本次测试里打开的 store。tearDown 会先把它们 flush 掉再删临时目录。
+///
+/// 不这样做就会出现偶发失败：采集一次会排一个 300ms 的落盘定时器，测试跑完时
+/// 那次写可能还在飞，和「删临时目录」撞上就是 `Directory not empty (errno: 66)`
+/// —— 报在**下一个**测试头上，看着像业务逻辑挂了，其实是测试脚手架的坑。
+final _openStores = <LyricStore>[];
+
+Future<LyricStore> _open(Directory dir, {Duration? writeInterval}) async {
+  final store = await LyricStore.open(
+    directory: dir,
+    writeInterval: writeInterval,
+  );
+  _openStores.add(store);
+  return store;
+}
+
+Future<void> _drainStores() async {
+  for (final store in _openStores) {
+    await store.flush();
+  }
+  _openStores.clear();
+}
 
 void main() {
   // ==========================================================
@@ -39,8 +64,11 @@ void main() {
   group('落盘策略', () {
     late Directory dir;
 
-    setUp(() => dir = Directory.systemTemp.createTempSync('lyriccar_save_policy'));
-    tearDown(() {
+    setUp(
+      () => dir = Directory.systemTemp.createTempSync('lyriccar_save_policy'),
+    );
+    tearDown(() async {
+      await _drainStores();
       if (dir.existsSync()) dir.deleteSync(recursive: true);
     });
 
@@ -56,7 +84,7 @@ void main() {
     ];
 
     test('同一首连续采几句：只写一次，flush 之后一次补齐', () async {
-      final store = await LyricStore.open(directory: dir);
+      final store = await _open(dir);
       // 已经有一首老歌落好了（新歌才会立刻写，老歌的后续句子走合并）
       store.put(_song(title: '老歌', texts: ['甲', '乙', '丙']));
       await store.flush();
@@ -76,12 +104,13 @@ void main() {
       expect(titlesOnDisk(), ['老歌']);
 
       await store.flush();
-      final lines = ((readFile()['songs'] as List).single as Map)['lines'] as List;
+      final lines =
+          ((readFile()['songs'] as List).single as Map)['lines'] as List;
       expect(lines.length, 6, reason: 'flush 之后一句都不能少');
     });
 
     test('新歌第一次出现就立刻落盘（不用等合并窗口）', () async {
-      final store = await LyricStore.open(directory: dir);
+      final store = await _open(dir);
       store.put(_song(title: '刚听到的新歌', texts: ['第一句']));
       // 给写盘一点时间（编码 + 写文件是异步的）
       await Future<void>.delayed(const Duration(milliseconds: 400));
@@ -89,41 +118,45 @@ void main() {
     });
 
     test('采齐的那一刻立刻落盘', () async {
-      final store = await LyricStore.open(directory: dir);
-      store.put(_song(title: '半成品', complete: false, fromStart: true, texts: ['甲']));
+      final store = await _open(dir);
+      store.put(
+        _song(title: '半成品', complete: false, fromStart: true, texts: ['甲']),
+      );
       store.put(_song(title: '老歌', texts: ['甲', '乙']));
       await store.flush();
 
       final before = storeFile().lastModifiedSync();
       // 同一首歌从「没采齐」变成「采齐了」 —— 这就是「以后能直接回放」的凭据
-      store.put(_song(title: '半成品', complete: true, fromStart: true, texts: ['甲', '乙']));
+      store.put(
+        _song(title: '半成品', complete: true, fromStart: true, texts: ['甲', '乙']),
+      );
       await Future<void>.delayed(const Duration(milliseconds: 400));
 
-      expect(
-        storeFile().lastModifiedSync(),
-        isNot(before),
-        reason: '采齐要马上存下来',
+      expect(storeFile().lastModifiedSync(), isNot(before), reason: '采齐要马上存下来');
+      final saved = (readFile()['songs'] as List).cast<Map>().firstWhere(
+        (song) => song['title'] == '半成品',
       );
-      final saved = (readFile()['songs'] as List)
-          .cast<Map>()
-          .firstWhere((song) => song['title'] == '半成品');
       expect(saved['complete'], isTrue);
     });
 
     test('写盘走临时文件改名，不会留下 .tmp，也不会写坏原文件', () async {
-      final store = await LyricStore.open(directory: dir);
+      final store = await _open(dir);
       store.put(_song(title: '新歌', texts: ['甲', '乙']));
       await store.flush();
 
-      expect(File('${storeFile().path}.tmp').existsSync(), isFalse, reason: '临时文件要改名走');
+      expect(
+        File('${storeFile().path}.tmp').existsSync(),
+        isFalse,
+        reason: '临时文件要改名走',
+      );
       expect(titlesOnDisk(), ['新歌'], reason: '内容要完整可解析');
     });
 
     test('连续采集会合并落盘：20 句不该整份重写 20 次', () async {
       // 真机上 500 首时一次整份重写要 160ms，所以「每句都写」是不能接受的。
       // 把真机 8 秒的合并窗口压成 200ms，量的还是同一套逻辑（含真实写盘）。
-      final store = await LyricStore.open(
-        directory: dir,
+      final store = await _open(
+        dir,
         writeInterval: const Duration(milliseconds: 200),
       );
 
@@ -148,22 +181,18 @@ void main() {
         lessThanOrEqualTo(8),
         reason: '20 句跨 1 秒、窗口 200ms → 最多几次；绝不能一句一写',
       );
-      expect(
-        store.rewriteCount,
-        greaterThan(1),
-        reason: '但也要真的落过盘，不是一直攒着',
-      );
+      expect(store.rewriteCount, greaterThan(1), reason: '但也要真的落过盘，不是一直攒着');
       expect(store.songs.single.lines.length, 20);
       final saved = (readFile()['songs'] as List).single as Map;
       expect((saved['lines'] as List).length, 20, reason: 'flush 之后一句不少');
     });
 
     test('写完能重新打开（改名之后路径还是原来那个）', () async {
-      final store = await LyricStore.open(directory: dir);
+      final store = await _open(dir);
       store.put(_song(title: '新歌', texts: ['甲', '乙']));
       await store.flush();
 
-      final reopened = await LyricStore.open(directory: dir);
+      final reopened = await _open(dir);
       expect(reopened.count, 1);
       expect(reopened.songs.single.lines.length, 2);
     });
@@ -175,18 +204,21 @@ void main() {
     dir = Directory.systemTemp.createTempSync('lyriccar_store_test');
   });
 
-  tearDown(() {
+  tearDown(() async {
+    await _drainStores();
     if (dir.existsSync()) dir.deleteSync(recursive: true);
   });
 
   test('写入后重新打开还在（真正落盘）', () async {
-    final store = await LyricStore.open(directory: dir);
+    final store = await _open(dir);
     store.put(_song(title: '夜曲', texts: ['第一句', '第二句']));
     expect(store.count, 1);
     await store.flush();
 
-    final reopened = await LyricStore.open(directory: dir);
-    final song = reopened.find(songKey(title: '夜曲', duration: const Duration(minutes: 3)));
+    final reopened = await _open(dir);
+    final song = reopened.find(
+      songKey(title: '夜曲', duration: const Duration(minutes: 3)),
+    );
     expect(song, isNotNull);
     expect(song!.title, '夜曲');
     expect(song.lines.map((line) => line.text), ['第一句', '第二句']);
@@ -196,25 +228,25 @@ void main() {
 
   test('文件坏掉时当成空库，不抛异常', () async {
     File('${dir.path}/${LyricStore.fileName}').writeAsStringSync('{ 这不是 json');
-    final store = await LyricStore.open(directory: dir);
+    final store = await _open(dir);
     expect(store.count, 0);
   });
 
   test('删掉一首之后重新打开也不会复活', () async {
-    final store = await LyricStore.open(directory: dir);
+    final store = await _open(dir);
     final key = songKey(title: '夜曲', duration: const Duration(minutes: 3));
     store.put(_song(title: '夜曲', texts: ['第一句', '第二句']));
     expect(store.remove(key), isTrue);
     expect(store.remove(key), isFalse);
     await store.flush();
 
-    final reopened = await LyricStore.open(directory: dir);
+    final reopened = await _open(dir);
     expect(reopened.count, 0);
   });
 
   group('导出 / 导入', () {
     test('导出的是可以再导入回来的 JSON', () async {
-      final store = await LyricStore.open(directory: dir);
+      final store = await _open(dir);
       store.put(_song(title: '夜曲', texts: ['A', 'B', 'C']));
 
       final document = jsonDecode(store.exportJson()) as Map<String, dynamic>;
@@ -223,9 +255,13 @@ void main() {
       expect((document['songs'] as List).length, 1);
 
       // 换台车机：新库是空的，导入后内容一致
-      final other = await LyricStore.open(
-        directory: Directory.systemTemp.createTempSync('lyriccar_store_test_b'),
+      final otherDir = Directory.systemTemp.createTempSync(
+        'lyriccar_store_test_b',
       );
+      addTearDown(() {
+        if (otherDir.existsSync()) otherDir.deleteSync(recursive: true);
+      });
+      final other = await _open(otherDir);
       final result = other.importJson(store.exportJson());
       expect(result.ok, isTrue);
       expect(result.added, 1);
@@ -238,12 +274,19 @@ void main() {
     });
 
     test('导入更完整的版本会覆盖本地的半份', () async {
-      final store = await LyricStore.open(directory: dir);
+      final store = await _open(dir);
       store.put(_song(title: '夜曲', complete: false, texts: ['A']));
 
-      final incoming = _song(title: '夜曲', complete: true, texts: ['A', 'B', 'C']);
+      final incoming = _song(
+        title: '夜曲',
+        complete: true,
+        texts: ['A', 'B', 'C'],
+      );
       final result = store.importJson(
-        jsonEncode({'version': 1, 'songs': [incoming.toJson()]}),
+        jsonEncode({
+          'version': 1,
+          'songs': [incoming.toJson()],
+        }),
       );
 
       expect(result.updated, 1);
@@ -252,12 +295,15 @@ void main() {
     });
 
     test('导入更差的版本不会覆盖本地更好的版本', () async {
-      final store = await LyricStore.open(directory: dir);
+      final store = await _open(dir);
       store.put(_song(title: '夜曲', texts: ['A', 'B', 'C']));
 
       final worse = _song(title: '夜曲', complete: false, texts: ['A']);
       final result = store.importJson(
-        jsonEncode({'version': 1, 'songs': [worse.toJson()]}),
+        jsonEncode({
+          'version': 1,
+          'songs': [worse.toJson()],
+        }),
       );
 
       expect(result.skipped, 1);
@@ -265,7 +311,7 @@ void main() {
     });
 
     test('文件不合法时给一句人话的错误，而不是抛异常', () async {
-      final store = await LyricStore.open(directory: dir);
+      final store = await _open(dir);
       expect(store.importJson('不是 json').ok, isFalse);
       expect(store.importJson('{"a":1}').ok, isFalse);
       expect(store.importJson('{"songs":{}}').ok, isFalse);
@@ -273,14 +319,53 @@ void main() {
     });
 
     test('导入时丢掉只有一句的垃圾条目', () async {
-      final store = await LyricStore.open(directory: dir);
+      final store = await _open(dir);
       final junk = _song(title: '只有一句', texts: ['就一句']);
       final result = store.importJson(
-        jsonEncode({'version': 1, 'songs': [junk.toJson()]}),
+        jsonEncode({
+          'version': 1,
+          'songs': [junk.toJson()],
+        }),
       );
       expect(result.added, 0);
       expect(result.skipped, 1);
       expect(store.count, 0);
+    });
+  });
+
+  group('真歌名（按歌名找歌词用的那个字段）', () {
+    test('往返一致：导出再导入不会把歌名弄丢', () {
+      final song = _song(
+        title: '烂人生 - 泥鳅zinco',
+        songName: '烂人生',
+        texts: ['A', 'B'],
+      );
+      final restored = StoredSong.fromJson(song.toJson());
+      expect(restored!.songName, '烂人生');
+      expect(restored.matchName, '烂人生');
+    });
+
+    test('老稿子没有 songName → 从「歌曲名 - 歌手」标题里推，不用迁移文件', () {
+      final legacy =
+          '{"key":"river|240","title":"River Flows in You - Yiruma","durationMs":240000,'
+          '"complete":true,"fromStart":true,"lines":[{"t":0,"text":"A"},{"t":5000,"text":"B"}]}';
+      final song = StoredSong.fromJson(jsonDecode(legacy));
+      expect(song!.songName, isEmpty);
+      expect(song.matchName, 'River Flows in You');
+      expect(
+        song.displayName,
+        'River Flows in You - Yiruma',
+        reason: '显示还是原来的标题',
+      );
+    });
+
+    test('有真歌名时，库里显示真歌名而不是「歌曲名 - 歌手」', () {
+      final song = _song(
+        title: '烂人生 - 泥鳅zinco',
+        songName: '烂人生',
+        texts: ['A', 'B'],
+      );
+      expect(song.displayName, '烂人生');
     });
   });
 
@@ -311,7 +396,7 @@ void main() {
     });
 
     test('导入时「齐了的」压过「更长但缺开头的」', () async {
-      final store = await LyricStore.open(directory: dir);
+      final store = await _open(dir);
       store.put(
         _song(
           title: '夜曲',
@@ -322,7 +407,10 @@ void main() {
       );
       final good = _song(title: '夜曲', fromStart: true, texts: ['A', 'B']);
       final result = store.importJson(
-        jsonEncode({'version': 1, 'songs': [good.toJson()]}),
+        jsonEncode({
+          'version': 1,
+          'songs': [good.toJson()],
+        }),
       );
       expect(result.updated, 1);
       expect(store.songs.single.ready, isTrue);
@@ -330,7 +418,7 @@ void main() {
     });
 
     test('导入时「缺开头的」不会顶掉本地「齐了的」', () async {
-      final store = await LyricStore.open(directory: dir);
+      final store = await _open(dir);
       store.put(_song(title: '夜曲', fromStart: true, texts: ['A', 'B']));
       final worse = _song(
         title: '夜曲',
@@ -338,7 +426,10 @@ void main() {
         texts: ['A', 'B', 'C', 'D'],
       );
       final result = store.importJson(
-        jsonEncode({'version': 1, 'songs': [worse.toJson()]}),
+        jsonEncode({
+          'version': 1,
+          'songs': [worse.toJson()],
+        }),
       );
       expect(result.skipped, 1);
       expect(store.songs.single.lines.length, 2);
@@ -346,7 +437,7 @@ void main() {
   });
 
   test('歌词库按最近更新排序', () async {
-    final store = await LyricStore.open(directory: dir);
+    final store = await _open(dir);
     store.put(
       _song(title: '早的', texts: ['A', 'B']).copyWith(updatedAtMs: 1000),
     );

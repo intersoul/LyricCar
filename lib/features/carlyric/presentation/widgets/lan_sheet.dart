@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/diagnostics.dart';
 import '../../data/lyric_lan_server.dart';
 import '../providers/carlyric_providers.dart';
 
@@ -55,7 +56,12 @@ class _LanSheetState extends ConsumerState<_LanSheet> {
   }
 
   Future<void> _start() async {
-    final server = LyricLanServer(store: ref.read(lyricStoreProvider));
+    final diagnostics = Diagnostics.current;
+    final server = LyricLanServer(
+      store: ref.read(lyricStoreProvider),
+      // 顺带把这个日志也挂出去：远程测试的人手机连上来就能把它带走
+      log: diagnostics?.snapshot,
+    );
     try {
       await server.start();
     } catch (error) {
@@ -96,8 +102,8 @@ class _LanSheetState extends ConsumerState<_LanSheet> {
               Text('局域网传输', style: theme.textTheme.titleLarge),
               const SizedBox(height: 8),
               Text(
-                '让手机连上和车机**同一个** Wi-Fi / 热点，然后在手机浏览器里打开下面这个地址。\n'
-                '页面里可以下载车上的歌词库，也可以把手机里的歌词库传上来。',
+                '让手机连上和车机「同一个」Wi-Fi / 热点，然后在手机浏览器里打开下面这个地址。\n'
+                '页面里可以下载车上的歌词库、上传手机里的歌词库，也可以把诊断日志带走。',
                 style: theme.textTheme.bodyMedium!.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                   height: 1.6,
@@ -118,7 +124,8 @@ class _LanSheetState extends ConsumerState<_LanSheet> {
                 )
               else ...[
                 FilledButton.icon(
-                  onPressed: () => Clipboard.setData(ClipboardData(text: primary)),
+                  onPressed: () =>
+                      Clipboard.setData(ClipboardData(text: primary)),
                   icon: const Icon(Icons.content_copy, size: 18),
                   label: const Text('复制地址'),
                 ),

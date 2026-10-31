@@ -12,11 +12,41 @@
 String normalizeTitle(String title) =>
     title.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
 
+/// 从歌手行的 `歌曲名 - 歌手` 里切出**真歌名**；切不出来返回 null。
+///
+/// 歌词写在歌曲名行时（网易云 / QQ 音乐 / 哔哩音乐的「车载歌词」），播放器会把
+/// 身份信息挪到歌手行。真机抓到的样子：
+///   * `River Flows in You (在你身上流动的河) - Yiruma`
+///   * `好心分手 (DUET WITH 王力宏) - 卢巧音/王力宏`
+///   * `烂人生 - 泥鳅zinco`
+/// 前半段是歌名，后半段是歌手 —— 这是**唯一**还能拿到真歌名的地方，所以按它匹配
+/// 歌词比按「歌手 + 专辑 + 时长」稳得多（后面这套会被时长抖动带偏）。
+///
+/// 按**第一个**分隔符切：歌名本身可能带连字符（`A - B` 这种极端情况会切错，
+/// 但切错只会让这首歌走回退路径，不会写坏已有歌词）。
+String? songNameFromTitleArtistLine(String value) {
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) return null;
+  for (final separator in const [' - ', ' – ', ' — ']) {
+    final index = trimmed.indexOf(separator);
+    if (index <= 0) continue;
+    final name = trimmed.substring(0, index).trim();
+    final rest = trimmed.substring(index + separator.length).trim();
+    if (name.isEmpty || rest.isEmpty) continue;
+    return name;
+  }
+  return null;
+}
+
 /// 「歌词写在歌曲名行」时用的歌曲标识。
 ///
 /// 那行本身（歌曲名）就是歌词，一直在变，当不了主键；只能用**歌手 + 专辑 + 时长**：
-/// 实测网易云 / QQ 音乐在歌曲名行放歌词时，会把身份信息挪到歌手行（格式是
-/// `专辑 - 歌手`），专辑行也保持真实，所以这两行是稳的。
+/// 实测网易云 / QQ 音乐 / 哔哩音乐在歌曲名行放歌词时，会把身份信息挪到歌手行
+/// （格式是 `歌曲名 - 歌手`，见 [songNameFromTitleArtistLine]），专辑行也保持真实，
+/// 所以这两行是稳的。
+///
+/// ⚠️ 这套 key 只当**回退**用（见 [songNameFromTitleArtistLine] 那套按歌名匹配）。
+/// 它有个已知毛病：时长按整秒进 key，播放器报的时长抖一秒就换了 key。
 ///
 /// 时长这里用**精确到秒**而不是 5 秒分桶：同一张专辑连着放两首时歌手 / 专辑都
 /// 一样，时长是唯一的分辨依据，桶太粗会把两首歌并成一条。

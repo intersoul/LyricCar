@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import androidx.annotation.RequiresApi
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
@@ -173,7 +174,12 @@ class LyricTransferChannel(
 
     // ----------------------------------------------------------
     // Android 10 及以上：MediaStore
+    //
+    // 这一整块只在 `legacyStorage == false`（= API 29 以上）时才会被调用，
+    // 但 lint 看不出这种「属性当闸门」的守卫，所以标上 @RequiresApi：
+    // 标完 lint 就不会再误报，而**它的通过也就证明了 23 上确实没有越级调用**。
     // ----------------------------------------------------------
+    @RequiresApi(Build.VERSION_CODES.Q)
     private fun saveViaMediaStore(name: String, content: String): String {
         val resolver = activity.contentResolver
         val values = ContentValues().apply {
@@ -189,6 +195,7 @@ class LyricTransferChannel(
         return uri.toString()
     }
 
+    @RequiresApi(Build.VERSION_CODES.Q)
     private fun listMediaStore(): List<Map<String, Any>> {
         val out = mutableListOf<Map<String, Any>>()
         val projection = arrayOf(

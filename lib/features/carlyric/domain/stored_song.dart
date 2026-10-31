@@ -32,6 +32,7 @@ class StoredSong {
   StoredSong({
     required this.key,
     required this.title,
+    this.songName = '',
     this.artist = '',
     this.album = '',
     this.duration = Duration.zero,
@@ -46,6 +47,13 @@ class StoredSong {
   final String key;
 
   final String title;
+
+  /// **真歌名**（采集时从歌手行的 `歌曲名 - 歌手` 里切出来的，可能为空）。
+  ///
+  /// 存它是为了「按歌名找歌词」：歌名在绝大多数情况下是唯一的，比
+  /// 「歌手 + 专辑 + 时长」稳（那套会被播放器报的时长抖动带偏）。老稿子没有这一位，
+  /// 用 [matchName] 从标题里推，不用迁移文件。
+  final String songName;
 
   /// 真实歌手（采集时不一定拿得到 —— 歌手行可能正被歌词占着）。
   final String artist;
@@ -77,6 +85,27 @@ class StoredSong {
   /// 至少要两句才算「有歌词」—— 只抓到一句多半是把真歌手/真专辑误当歌词了。
   bool get usable => lines.length >= 2;
 
+  /// 界面上显示的名字：有真歌名就用真歌名，否则用标题。
+  ///
+  /// 歌曲名行模式下 [title] 存的是歌手行的 `歌曲名 - 歌手`（那时候拿不到歌名），
+  /// 显示成 `烂人生 - 泥鳅zinco` 不如显示成 `烂人生`。
+  String get displayName {
+    final name = songName.trim();
+    return name.isNotEmpty ? name : title;
+  }
+
+  /// 拿来和播放器报的歌名比对的名字。
+  ///
+  /// 优先用采集时记下的 [songName]；老稿子没有这一位，就从标题里推：
+  ///   * 歌手行模式（歌词在歌手/专辑行）：标题本来就是歌名；
+  ///   * 歌曲名行模式：标题存的是 `歌曲名 - 歌手`，切掉后面那段。
+  /// 推导可能切错（歌名本身带 ` - `），所以查找时**标题原文**也会比一次。
+  String get matchName {
+    final name = songName.trim();
+    if (name.isNotEmpty) return name;
+    return songNameFromTitleArtistLine(title) ?? title.trim();
+  }
+
   /// 还缺开头那几句（上一次是从中间开始听的）。
   bool get missingStart => !fromStart;
 
@@ -96,6 +125,7 @@ class StoredSong {
   StoredSong copyWith({
     String? key,
     String? title,
+    String? songName,
     String? artist,
     String? album,
     Duration? duration,
@@ -107,6 +137,7 @@ class StoredSong {
   }) => StoredSong(
     key: key ?? this.key,
     title: title ?? this.title,
+    songName: songName ?? this.songName,
     artist: artist ?? this.artist,
     album: album ?? this.album,
     duration: duration ?? this.duration,
@@ -120,6 +151,7 @@ class StoredSong {
   Map<String, Object?> toJson() => {
     'key': key,
     'title': title,
+    'songName': songName,
     'artist': artist,
     'album': album,
     'durationMs': duration.inMilliseconds,
@@ -164,6 +196,7 @@ class StoredSong {
     return StoredSong(
       key: key,
       title: title,
+      songName: json['songName']?.toString() ?? '',
       artist: json['artist']?.toString() ?? '',
       album: json['album']?.toString() ?? '',
       duration: duration,

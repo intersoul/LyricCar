@@ -84,6 +84,18 @@ class MediaSessionChannel {
     }
   }
 
+  /// 一份「现场快照」：系统版本 / 机型 / 通知使用权 / 每个会话的播放状态和全部
+  /// 元数据键值。远程测试的人导日志时，这段是最关键的证据。
+  Future<String> diagnose() async {
+    try {
+      return await _method.invokeMethod<String>('diagnose') ?? '';
+    } on PlatformException catch (error) {
+      return '读取失败：${error.message}';
+    } on MissingPluginException {
+      return '';
+    }
+  }
+
   /// 跳到「通知使用权」系统设置页。
   Future<void> openNotificationAccessSettings() async {
     try {

@@ -16,6 +16,9 @@ class _FakeSink implements LyricSink {
   void put(StoredSong song) => songs[song.key] = song;
 
   @override
+  Iterable<StoredSong> get all => songs.values;
+
+  @override
   bool remove(String key) => songs.remove(key) != null;
 
   @override

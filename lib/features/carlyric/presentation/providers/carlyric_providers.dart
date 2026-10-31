@@ -106,7 +106,10 @@ class LyricSessionController extends Notifier<LyricSessionState> {
     }
 
     // 用户在设置里换了「歌词写在歌手行 / 专辑行」→ 立刻按新规则收
-    ref.listen(carlyricSettingsProvider, (_, next) => engine.setField(next.field));
+    ref.listen(
+      carlyricSettingsProvider,
+      (_, next) => engine.setField(next.field),
+    );
 
     ref.listen(mediaInfoProvider, (_, next) {
       final info = next.value;

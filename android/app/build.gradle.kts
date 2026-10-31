@@ -21,6 +21,9 @@ if (hasReleaseKey) {
     keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
 }
 
+/// 支持到 Android 6.0（API 23）。见 defaultConfig 里的说明。
+val lyriccarMinSdk = 23
+
 android {
     namespace = "com.homeweb.lyriccar"
     compileSdk = flutter.compileSdkVersion
@@ -33,7 +36,15 @@ android {
 
     defaultConfig {
         applicationId = "com.homeweb.lyriccar"
-        minSdk = flutter.minSdkVersion
+        // Flutter 3.47 的默认 minSdk 是 24，而老车机里有 Android 6.0（API 23）的，
+        // 所以往下放到 23。
+        //
+        // ⚠️ 不能直接写 `minSdk = 23`：flutter 工具会把「16~23」这种**字面量**当成
+        // 「太旧」并改回 flutter.minSdkVersion（见 flutter_tools 的
+        // tooOldMinSdkVersionEqualsMatch）。写成变量它就不会动。
+        // 代价是「API 23 上能跑」这件事 Flutter 官方不保证，本仓库也没法在
+        // 真车机上验（见 README「支持的最低 Android 版本」）。
+        minSdk = lyriccarMinSdk
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

@@ -14,16 +14,17 @@ class AppTheme {
   static const Color textSecondary = Color(0xFF8FA3B0);
 
   static ThemeData get dark {
-    final scheme = ColorScheme.fromSeed(
-      seedColor: accent,
-      brightness: Brightness.dark,
-    ).copyWith(
-      surface: background,
-      primary: accent,
-      onSurface: textPrimary,
-      onSurfaceVariant: textSecondary,
-      surfaceContainerLow: surface,
-    );
+    final scheme =
+        ColorScheme.fromSeed(
+          seedColor: accent,
+          brightness: Brightness.dark,
+        ).copyWith(
+          surface: background,
+          primary: accent,
+          onSurface: textPrimary,
+          onSurfaceVariant: textSecondary,
+          surfaceContainerLow: surface,
+        );
 
     return ThemeData(
       useMaterial3: true,

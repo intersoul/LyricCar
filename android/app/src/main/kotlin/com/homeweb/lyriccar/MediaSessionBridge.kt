@@ -222,8 +222,83 @@ class MediaSessionBridge(
                 result.success(null)
             }
 
+            // 远程排查用：把系统信息 + 当前能读到的所有会话原样吐出来。
+            // 别人的车机我没有，这一段就是「现场照片」。
+            "diagnose" -> result.success(diagnoseText())
+
             else -> result.notImplemented()
         }
+    }
+
+    // ----------------------------------------------------------
+    // 远程诊断
+    // ----------------------------------------------------------
+    /**
+     * 一份人能读的现场快照：系统版本、通知使用权、以及**每个**会话的
+     * 播放状态和全部元数据键值。
+     *
+     * 为什么值得单独做：这套方案能不能用，全看车机有没有把播放器发布成
+     * MediaSession、以及歌词写在哪一行。这两件事只有到了那台车上才知道，
+     * 所以把原始字段原样带回来，比让车友描述「屏幕上显示什么」准确得多。
+     */
+    private fun diagnoseText(): String {
+        val out = StringBuilder()
+        out.appendLine("【系统】Android " + Build.VERSION.RELEASE + "（SDK " + Build.VERSION.SDK_INT + "）")
+        out.appendLine("【机型】" + Build.MANUFACTURER + " " + Build.MODEL + "（" + Build.DEVICE + "）")
+        val granted = try { hasNotificationAccess() } catch (error: Exception) { false }
+        out.appendLine("【通知使用权】" + granted)
+        out.appendLine("【监听组件】" + listenerComponent.flattenToString())
+        out.appendLine("【当前选中的播放器】" + (controller?.packageName ?: "（无）"))
+
+        val sessions = try {
+            sessionManager.getActiveSessions(listenerComponent)
+        } catch (error: Exception) {
+            out.appendLine("【可读会话】读取失败：" + (error.message ?: error.javaClass.simpleName))
+            return out.toString()
+        }
+        out.appendLine("【可读会话】" + sessions.size + " 个")
+        sessions.forEachIndexed { index, item ->
+            out.appendLine("")
+            out.appendLine("--- 会话 " + (index + 1) + "：" + item.packageName + " ---")
+            val state = item.playbackState
+            if (state == null) {
+                out.appendLine("  PlaybackState：无")
+            } else {
+                out.appendLine(
+                    "  PlaybackState：state=" + state.state +
+                        " position=" + state.position +
+                        " speed=" + state.playbackSpeed +
+                        " actions=" + state.actions,
+                )
+            }
+            val metadata = item.metadata
+            if (metadata == null) {
+                out.appendLine("  元数据：无")
+                return@forEachIndexed
+            }
+            out.appendLine("  元数据 " + metadata.size() + " 项：")
+            for (key in metadata.keySet()) {
+                out.appendLine("    " + key + " = " + describeValue(metadata, key))
+            }
+        }
+        return out.toString()
+    }
+
+    /** 元数据某个键的值：文本 / 位图尺寸 / 数字，都截短，避免日志里塞进整段歌词。 */
+    private fun describeValue(metadata: MediaMetadata, key: String): String {
+        val text = metadata.getText(key)
+        if (text != null) return shorten(text.toString())
+        val bitmap = metadata.getBitmap(key)
+        if (bitmap != null) return "Bitmap(" + bitmap.width + "x" + bitmap.height + ")"
+        val number = metadata.getLong(key)
+        if (number != null) return number.toString()
+        if (metadata.getRating(key) != null) return "Rating"
+        return "（其它类型）"
+    }
+
+    private fun shorten(value: String): String {
+        val flat = value.replace("\n", " ⏎ ")
+        return if (flat.length <= 120) flat else flat.substring(0, 120) + "…"
     }
 
     // ----------------------------------------------------------

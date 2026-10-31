@@ -32,7 +32,10 @@ ProviderContainer _container() {
   return container;
 }
 
-Future<void> _openSheet(WidgetTester tester, ProviderContainer container) async {
+Future<void> _openSheet(
+  WidgetTester tester,
+  ProviderContainer container,
+) async {
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
@@ -67,7 +70,10 @@ void main() {
     await _openSheet(tester, container);
 
     // 默认是自动判断
-    expect(container.read(carlyricSettingsProvider).field, LyricFieldPreference.auto);
+    expect(
+      container.read(carlyricSettingsProvider).field,
+      LyricFieldPreference.auto,
+    );
     expect(
       find.byIcon(Icons.radio_button_checked),
       findsOneWidget,
@@ -77,7 +83,10 @@ void main() {
     await tester.tap(find.text('歌曲名行'));
     await tester.pumpAndSettle();
 
-    expect(container.read(carlyricSettingsProvider).field, LyricFieldPreference.title);
+    expect(
+      container.read(carlyricSettingsProvider).field,
+      LyricFieldPreference.title,
+    );
     // 选中标记跟着挪过去（现在落在「歌曲名行」那一项上）
     expect(
       find.descendant(

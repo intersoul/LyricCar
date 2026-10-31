@@ -17,8 +17,7 @@ void main() {
 
     test('重听一遍时，同一句（文本相同、时间几乎一样）不会重复入库', () {
       final firstPass = [
-        for (var i = 0; i < 5; i++)
-          LyricLine(timeMs: i * 5000, text: '第 $i 句'),
+        for (var i = 0; i < 5; i++) LyricLine(timeMs: i * 5000, text: '第 $i 句'),
       ];
       var lines = List.of(firstPass);
 
@@ -37,10 +36,7 @@ void main() {
       var lines = <LyricLine>[];
       lines = mergeLyricLine(lines, const LyricLine(timeMs: 5000, text: '副歌'));
       lines = mergeLyricLine(lines, const LyricLine(timeMs: 6000, text: '主歌'));
-      lines = mergeLyricLine(
-        lines,
-        const LyricLine(timeMs: 90000, text: '副歌'),
-      );
+      lines = mergeLyricLine(lines, const LyricLine(timeMs: 90000, text: '副歌'));
       expect(lines.map((line) => line.text), ['副歌', '主歌', '副歌']);
     });
 

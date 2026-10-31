@@ -110,6 +110,10 @@ class LyricStore implements LyricSink, LyricLibrary {
   @override
   StoredSong? find(String key) => _songs[key];
 
+  /// 按歌名找歌词时要扫一遍全库（几百首，不到 1ms）。
+  @override
+  Iterable<StoredSong> get all => _songs.values;
+
   @override
   int get count => _songs.length;
 
@@ -126,7 +130,9 @@ class LyricStore implements LyricSink, LyricLibrary {
     _bump();
     // 「这首歌第一次出现」和「终于采齐了」是两个值得马上落盘的节点：
     // 前者是记录的开始，后者是「以后可以直接回放」的凭据。
-    _scheduleSave(urgent: existing == null || (!existing.complete && song.complete));
+    _scheduleSave(
+      urgent: existing == null || (!existing.complete && song.complete),
+    );
   }
 
   void _bump() => revision.value++;
@@ -285,7 +291,9 @@ class LyricStore implements LyricSink, LyricLibrary {
   /// 不串的话，「新歌立刻写」和「flush」会同时在写同一个文件（还都在写
   /// `xxx.tmp`）—— 测试里就是这么抓到的：flush 回来时文件还没写完。
   Future<void> _write() {
-    final next = (_pendingSave ?? Future<void>.value()).then((_) => _writeNow());
+    final next = (_pendingSave ?? Future<void>.value()).then(
+      (_) => _writeNow(),
+    );
     _pendingSave = next;
     return next;
   }
