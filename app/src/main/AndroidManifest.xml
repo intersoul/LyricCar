@@ -12,9 +12,19 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- 读取蓝牙 A2DP Sink 的 MediaBrowserService（Android 11+ 的包可见性声明）。 -->
+    <!--
+      读取蓝牙 A2DP Sink 的 MediaBrowserService（Android 11+ 的包可见性声明）。
+      常见的是 com.android.bluetooth；有的 ROM 换了包名 / 类名，所以再按
+      MediaBrowserService 的 intent 查一遍，顺带列上几个常见的厂商蓝牙包。
+    -->
     <queries>
         <package android:name="com.android.bluetooth" />
+        <package android:name="com.byd.bluetooth" />
+        <package android:name="com.byd.bt" />
+        <package android:name="com.qualcomm.bluetooth" />
+        <intent>
+            <action android:name="android.media.browse.MediaBrowserService" />
+        </intent>
     </queries>
 
     <uses-permission

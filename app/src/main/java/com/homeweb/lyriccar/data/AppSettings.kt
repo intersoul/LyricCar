@@ -10,6 +10,7 @@ import com.homeweb.lyriccar.model.LyricFieldPreference
 import com.homeweb.lyriccar.model.LyricFontScale
 import com.homeweb.lyriccar.model.LyricLineSpacing
 import com.homeweb.lyriccar.model.PanelTone
+import com.homeweb.lyriccar.model.SourceChannel
 import com.homeweb.lyriccar.model.ThemeMode
 import org.json.JSONObject
 import java.io.File
@@ -25,9 +26,12 @@ data class AppSettings(
     val lyric: LyricDisplay = LyricDisplay(),
     /** 主界面背景：默认 / 图片 / 纯色。 */
     val background: BackgroundStyle = BackgroundStyle(),
+    /** 播放信息的来源通道：自动 / 蓝牙 / 系统会话。 */
+    val channel: SourceChannel = SourceChannel.AUTO,
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("field", field.name.lowercase())
+        put("channel", channel.name.lowercase())
         put("keepScreenOn", keepScreenOn)
         put("theme", theme.name.lowercase())
         put("splitRatio", splitRatio.toDouble())
@@ -89,6 +93,7 @@ data class AppSettings(
                         imageName = json.optString("bgImage"),
                         panel = PanelTone.fromName(json.optString("bgPanel")),
                     ),
+                    channel = SourceChannel.fromName(json.optString("channel")),
                 )
             } catch (error: Exception) {
                 Diagnostics.current?.log("设置读取失败，用默认值：$error")

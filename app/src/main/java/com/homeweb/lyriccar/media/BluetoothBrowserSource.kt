@@ -2,6 +2,8 @@ package com.homeweb.lyriccar.media
 
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.MediaMetadata
 import android.media.browse.MediaBrowser
 import android.media.session.MediaController
@@ -9,6 +11,7 @@ import android.media.session.PlaybackState
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.service.media.MediaBrowserService
 import android.util.Log
 import com.homeweb.lyriccar.data.Diagnostics
 import com.homeweb.lyriccar.model.MediaInfo
@@ -17,13 +20,18 @@ import com.homeweb.lyriccar.model.MediaInfo
  * 蓝牙 A2DP Sink 自带的 MediaBrowserService 数据源。
  *
  * 车机蓝牙栈把「手机通过蓝牙播放的歌」发布成一个导出的 MediaBrowserService：
- *   com.android.bluetooth/.a2dpsink.mbs.A2dpMediaBrowserService
+ *   com.android.bluetooth/.a2dpsink.mbs.A2dpMediaBrowserService（高通方案常见）
+ *   com.android.bluetooth/.avrcpcontroller.BluetoothMediaBrowserService（AOSP）
+ * 还有的 ROM 换了包名 / 类名。
  *
  * 普通第三方 App 可以连接它、拿到 MediaSession.Token，再创建 MediaController，
  * 从而读取 TITLE / ARTIST / ALBUM / DURATION / 播放位置——**不需要通知使用权**。
  *
- * 这是替代通知监听的首选路径。服务不存在或连接失败时，由 MediaSourceCoordinator
- * 自动回退到原来的 NotificationListenerService 方案。
+ * 这也是「媒体中心放蓝牙音乐、系统会话里没有歌名」时的备选通道：车机自己的
+ * 媒体中心只报播放状态，歌名在蓝牙栈那边。所以这里不再写死一个组件名，
+ * 而是启动时把可能的蓝牙媒体浏览器服务都找出来，逐个试。
+ *
+ * 数据源由 MediaSourceCoordinator 按用户选的通道调度，引擎 / 界面不关心来源。
  */
 class BluetoothBrowserSource(private val context: Context) {
 
@@ -31,7 +39,6 @@ class BluetoothBrowserSource(private val context: Context) {
     var listener: ((MediaInfo) -> Unit)? = null
 
     private val handler = Handler(Looper.getMainLooper())
-    private val component = ComponentName(BLUETOOTH_PACKAGE, SERVICE_CLASS)
     private val labelCache = mutableMapOf<String, String>()
 
     private var started = false
@@ -42,7 +49,7 @@ class BluetoothBrowserSource(private val context: Context) {
     private var retryAttempt = 0
     /** 曾经成功绑定过服务（哪怕没拿到会话）。服务其实存在，只是暂时连不上/没有歌。 */
     private var checkBound = false
-    /** 绑定被系统明确拒绝（服务字段被摘掉等），短期内重试也没用。 */
+    /** 这一圈候选服务都试过了，都没连上。 */
     private var bindFailed = false
     private var lastFailure: String? = null
     private var lastSignature: String? = null
@@ -52,7 +59,18 @@ class BluetoothBrowserSource(private val context: Context) {
 
     private var localBaseElapsed = 0L
 
+    /** 候选服务：启动时找一次，之后缓存。 */
+    private val candidates: List<ComponentName> by lazy { discoverCandidates() }
+
+    private var candidateIndex = 0
+    private var failedThisRound = 0
+    private var activeCandidate: ComponentName? = null
+
     private val retryRunnable = Runnable {
+        if (started) connect()
+    }
+
+    private val connectRunnable = Runnable {
         if (started) connect()
     }
 
@@ -69,6 +87,7 @@ class BluetoothBrowserSource(private val context: Context) {
             connecting = false
             handler.removeCallbacks(connectTimeout)
             retryAttempt = 0
+            failedThisRound = 0
             checkBound = true
             bindFailed = false
             lastFailure = null
@@ -79,7 +98,9 @@ class BluetoothBrowserSource(private val context: Context) {
                 null
             }
             if (token == null) {
-                Diagnostics.log("[MediaSource] 蓝牙 MediaBrowser 已连上，但暂时没有播放会话")
+                Diagnostics.log(
+                    "[MediaSource] 蓝牙 ${activeCandidate?.flattenToShortString()} 已连上，但暂时没有播放会话",
+                )
                 teardownController()
                 emitIdle()
                 scheduleRetry(null)
@@ -106,14 +127,7 @@ class BluetoothBrowserSource(private val context: Context) {
         }
 
         override fun onConnectionFailed() {
-            connecting = false
-            handler.removeCallbacks(connectTimeout)
-            bindFailed = true
-            lastFailure = "onConnectionFailed"
-            Diagnostics.log("[MediaSource] 蓝牙 MediaBrowser 连接失败，准备重连")
-            teardownController()
-            emitIdle()
-            scheduleRetry(null)
+            switchCandidateOrRetry("onConnectionFailed")
         }
     }
 
@@ -135,32 +149,86 @@ class BluetoothBrowserSource(private val context: Context) {
         }
     }
 
-    /** 服务是否存在且导出。只读查询，不需要通知使用权。 */
-    fun isSupported(): Boolean {
-        return try {
-            context.packageManager.getServiceInfo(component, 0).exported
-        } catch (_: Exception) {
-            false
+    // ----------------------------------------------------------
+    // 服务发现
+    // ----------------------------------------------------------
+
+    /**
+     * 找出这台车机上「可能是蓝牙媒体浏览器」的服务：
+     *   1. 两个已知组件名（高通 a2dpsink / AOSP avrcpcontroller）；
+     *   2. 蓝牙相关包里名字带 MediaBrowser 的服务（ROM 改类名也能找到）；
+     *   3. 声明了 MediaBrowserService intent 的蓝牙相关服务。
+     * 只保留导出的（导出才能被第三方 App 绑定）。
+     */
+    private fun discoverCandidates(): List<ComponentName> {
+        val found = LinkedHashSet<ComponentName>()
+        found.addAll(KNOWN_COMPONENTS)
+        for (pkg in BLUETOOTH_PACKAGES) {
+            found.addAll(servicesOf(pkg))
         }
+        found.addAll(intentServices())
+        return found.filter { isExported(it) }
     }
+
+    private fun servicesOf(packageName: String): List<ComponentName> {
+        val info = try {
+            @Suppress("DEPRECATION")
+            context.packageManager.getPackageInfo(packageName, PackageManager.GET_SERVICES)
+        } catch (_: Exception) {
+            return emptyList()
+        }
+        val services = info.services ?: return emptyList()
+        return services
+            .filter { it.name.contains("mediabrowser", ignoreCase = true) }
+            .map { ComponentName(packageName, it.name) }
+    }
+
+    private fun intentServices(): List<ComponentName> {
+        val resolved = try {
+            context.packageManager.queryIntentServices(
+                Intent(MediaBrowserService.SERVICE_INTERFACE),
+                0,
+            )
+        } catch (_: Exception) {
+            return emptyList()
+        }
+        return resolved.mapNotNull { it.serviceInfo }
+            .filter { info ->
+                val pkg = info.packageName.lowercase()
+                val name = info.name.lowercase()
+                pkg.contains("bluetooth") || pkg.contains("byd") ||
+                    name.contains("a2dp") || name.contains("avrcp") ||
+                    name.contains("bluetooth")
+            }
+            .map { ComponentName(it.packageName, it.name) }
+    }
+
+    private fun isExported(component: ComponentName): Boolean = try {
+        context.packageManager.getServiceInfo(component, 0).exported
+    } catch (_: Exception) {
+        false
+    }
+
+    /** 服务是否存在且导出。只读查询，不需要通知使用权。 */
+    fun isSupported(): Boolean = candidates.isNotEmpty()
 
     fun hasSession(): Boolean = controller != null
 
     /**
-     * 这条数据源到底能不能用：系统里有这个导出服务，或者绑定成功后只是暂时没歌。
-     * 只有「连不上且从未连上过」才算不可用。
+     * 这条数据源到底能不能用：系统里有可绑定的蓝牙媒体浏览器服务，
+     * 或者绑定成功后只是暂时没歌。只有「一个候选都找不到」才算不可用。
      */
     fun isUsable(): Boolean {
-        if (!isSupported()) return false
+        if (candidates.isEmpty()) return false
         if (controller != null || connecting) return true
         if (checkBound) return true
         return !bindFailed
     }
 
     fun failureReason(): String? = when {
-        !isSupported() -> "系统没有蓝牙媒体浏览器服务"
+        candidates.isEmpty() -> "系统没有蓝牙媒体浏览服务"
         controller != null || connecting || checkBound -> null
-        bindFailed -> lastFailure
+        bindFailed -> lastFailure ?: "连接失败"
         else -> null
     }
 
@@ -169,11 +237,17 @@ class BluetoothBrowserSource(private val context: Context) {
     fun start() {
         if (started) return
         started = true
-        if (!isSupported()) {
-            Diagnostics.log("[MediaSource] 未找到蓝牙 MediaBrowserService，回退通知监听")
+        if (candidates.isEmpty()) {
+            Diagnostics.log("[MediaSource] 未找到蓝牙 MediaBrowserService（候选 0 个）")
             emitIdle()
             return
         }
+        Diagnostics.log(
+            "[MediaSource] 蓝牙候选服务 ${candidates.size} 个：" +
+                candidates.joinToString(" | ") { it.flattenToShortString() },
+        )
+        candidateIndex = 0
+        failedThisRound = 0
         connect()
     }
 
@@ -183,12 +257,15 @@ class BluetoothBrowserSource(private val context: Context) {
         connecting = false
         teardownController()
         teardownBrowser()
+        candidateIndex = 0
+        failedThisRound = 0
+        activeCandidate = null
         lastSignature = null
         lastInfo = MediaInfo.NONE
         smoothedPosition = null
     }
 
-    /** 回到前台 / 用户点「重新检测」时重新连一次。 */
+    /** 回到前台 / 用户点「重新检测」/ 刚把通道切到蓝牙时重新连一次。 */
     fun checkAndReconnect() {
         if (!started) return
         if (controller != null) {
@@ -196,7 +273,10 @@ class BluetoothBrowserSource(private val context: Context) {
             return
         }
         handler.removeCallbacks(retryRunnable)
+        handler.removeCallbacks(connectRunnable)
         retryAttempt = 0
+        candidateIndex = 0
+        failedThisRound = 0
         checkBound = false
         bindFailed = false
         lastFailure = null
@@ -206,6 +286,14 @@ class BluetoothBrowserSource(private val context: Context) {
     private fun connect() {
         if (!started || connecting) return
         if (controller != null) return
+        val list = candidates
+        if (list.isEmpty()) {
+            emitIdle()
+            return
+        }
+        if (candidateIndex !in list.indices) candidateIndex = 0
+        val target = list[candidateIndex]
+        activeCandidate = target
         connecting = true
         teardownBrowser()
         bindFailed = false
@@ -213,29 +301,48 @@ class BluetoothBrowserSource(private val context: Context) {
         handler.removeCallbacks(connectTimeout)
         handler.postDelayed(connectTimeout, CONNECT_TIMEOUT_MS)
         try {
-            val next = MediaBrowser(context.applicationContext, component, connectionCallback, null)
+            val next = MediaBrowser(context.applicationContext, target, connectionCallback, null)
             browser = next
             next.connect()
         } catch (error: Exception) {
-            handler.removeCallbacks(connectTimeout)
-            connecting = false
-            browser = null
-            bindFailed = true
-            lastFailure = error.javaClass.simpleName
-            Diagnostics.log("[MediaSource] 绑定蓝牙 MediaBrowser 失败：$error")
-            scheduleRetry(null)
+            Diagnostics.log(
+                "[MediaSource] 绑定蓝牙 MediaBrowser 失败：" +
+                    "${target.flattenToShortString()} $error",
+            )
+            switchCandidateOrRetry(error.javaClass.simpleName)
         }
     }
 
     private val connectTimeout = Runnable {
         if (!connecting) return@Runnable
+        switchCandidateOrRetry("超时")
+    }
+
+    /** 当前候选连不上：还有别的候选就换一个，都试完了再等下一轮。 */
+    private fun switchCandidateOrRetry(reason: String) {
         connecting = false
-        bindFailed = true
-        lastFailure = "超时"
-        Diagnostics.log("[MediaSource] 蓝牙 MediaBrowser 连接超时，准备重连")
+        handler.removeCallbacks(connectTimeout)
         teardownBrowser()
         emitIdle()
-        scheduleRetry(null)
+        failedThisRound++
+        val list = candidates
+        val failed = activeCandidate?.flattenToShortString() ?: "候选"
+        if (list.size > 1 && failedThisRound < list.size) {
+            candidateIndex = (candidateIndex + 1) % list.size
+            Diagnostics.log(
+                "[MediaSource] 蓝牙候选 $failed $reason，换下一个：" +
+                    list[candidateIndex].flattenToShortString(),
+            )
+            handler.removeCallbacks(connectRunnable)
+            handler.postDelayed(connectRunnable, NEXT_CANDIDATE_DELAY_MS)
+            return
+        }
+        candidateIndex = 0
+        failedThisRound = 0
+        bindFailed = true
+        lastFailure = reason
+        Diagnostics.log("[MediaSource] 蓝牙 MediaBrowser 连接失败，准备重连")
+        scheduleRetry(reason)
     }
 
     private fun scheduleRetry(reason: String?) {
@@ -447,10 +554,19 @@ class BluetoothBrowserSource(private val context: Context) {
         val out = StringBuilder()
         val current = controller
         out.appendLine("【蓝牙 MediaBrowser】")
-        out.appendLine("  服务支持：${isSupported()}")
-        out.appendLine("  已连接：${current != null}  连接中：$connecting")
+        out.appendLine("  服务支持：${isSupported()}（候选 ${candidates.size} 个）")
+        out.appendLine("  已连接：${current != null}  连接中：$connecting  失败轮次：$failedThisRound")
+        activeCandidate?.let { out.appendLine("  当前候选：${it.flattenToShortString()}") }
+        if (candidates.isNotEmpty()) {
+            out.appendLine("  候选服务：")
+            candidates.forEachIndexed { index, item ->
+                val mark = if (index == candidateIndex) "→" else "·"
+                out.appendLine("    $mark ${item.flattenToShortString()}")
+            }
+        }
         if (current == null) {
             out.appendLine("  controller：无")
+            failureReason()?.let { out.appendLine("  原因：$it") }
             return out.toString()
         }
         out.appendLine("  包名：${current.packageName}")
@@ -494,10 +610,29 @@ class BluetoothBrowserSource(private val context: Context) {
     companion object {
         private const val TAG = "BluetoothBrowserSource"
         private const val BLUETOOTH_PACKAGE = "com.android.bluetooth"
-        private const val SERVICE_CLASS =
-            "com.android.bluetooth.a2dpsink.mbs.A2dpMediaBrowserService"
         private const val TICK_PLAYING_MS = 250L
         private const val TICK_IDLE_MS = 1_000L
         private const val CONNECT_TIMEOUT_MS = 8_000L
+        private const val NEXT_CANDIDATE_DELAY_MS = 600L
+
+        /** ROM 可能换包名，常见的都试一下。 */
+        private val BLUETOOTH_PACKAGES = listOf(
+            BLUETOOTH_PACKAGE,
+            "com.byd.bluetooth",
+            "com.byd.bt",
+            "com.qualcomm.bluetooth",
+        )
+
+        /** 已知的两种实现：高通 a2dpsink 和 AOSP avrcpcontroller。 */
+        private val KNOWN_COMPONENTS = listOf(
+            ComponentName(
+                BLUETOOTH_PACKAGE,
+                "com.android.bluetooth.a2dpsink.mbs.A2dpMediaBrowserService",
+            ),
+            ComponentName(
+                BLUETOOTH_PACKAGE,
+                "com.android.bluetooth.avrcpcontroller.BluetoothMediaBrowserService",
+            ),
+        )
     }
 }

@@ -32,6 +32,7 @@ class MainActivity : Activity() {
         if (::screen.isInitialized) {
             screen.applyLyricDisplay()
             screen.applyBackground()
+            screen.onChannelChanged()
         }
         applyThemeIfNeeded()
     }

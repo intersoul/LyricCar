@@ -68,10 +68,13 @@ class Diagnostics private constructor(
         diagnose: () -> String,
         alternativeSource: () -> Boolean = { false },
         alternativeSourceFailure: () -> String? = { null },
+        channelState: () -> String = { "" },
     ) {
         section("环境自查")
         log("App 版本 ${BuildConfig.VERSION_NAME}")
         log("运行时 Android ${Build.VERSION.RELEASE}（SDK ${Build.VERSION.SDK_INT}）")
+        runCatching { channelState().takeIf { it.isNotBlank() } }
+            .getOrNull()?.let { log("数据通道：$it") }
         val granted = try { hasNotificationAccess() } catch (error: Exception) { false }
         val alternative = try { alternativeSource() } catch (error: Exception) { false }
         when {

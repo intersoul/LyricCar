@@ -44,6 +44,7 @@ import com.homeweb.lyriccar.model.LyricFontScale
 import com.homeweb.lyriccar.model.LyricLine
 import com.homeweb.lyriccar.model.LyricLineSpacing
 import com.homeweb.lyriccar.model.PanelTone
+import com.homeweb.lyriccar.model.SourceChannel
 import com.homeweb.lyriccar.model.StoredSong
 import com.homeweb.lyriccar.model.ThemeMode
 import com.homeweb.lyriccar.transfer.DownloadedFile
@@ -538,6 +539,7 @@ class SettingsSheet(
     private val sheet = SheetDialog(activity, "设置")
     private lateinit var styleSection: LinearLayout
     private lateinit var backgroundSection: LinearLayout
+    private lateinit var channelSection: LinearLayout
 
     fun show() {
         rebuild()
@@ -599,6 +601,13 @@ class SettingsSheet(
             ).apply { setLineSpacing(0f, 1.5f) },
             matchWidthWrap(),
         )
+
+        body.addView(space(activity, 22))
+        body.addView(textView(activity, "连接通道", 18, Palette.TEXT_SECONDARY))
+        body.addView(space(activity, 10))
+        channelSection = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+        body.addView(channelSection, matchWidthWrap())
+        fillChannelSection()
 
         body.addView(space(activity, 22))
         body.addView(textView(activity, "外观", 18, Palette.TEXT_SECONDARY))
@@ -715,6 +724,58 @@ class SettingsSheet(
         )
         diagnosticsRow.addView(diagColumn, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
         body.addView(diagnosticsRow, matchWidthWrap())
+    }
+
+    // ------------------------------------------------------
+    // 连接通道
+    // ------------------------------------------------------
+    private fun fillChannelSection() {
+        val channel = app.settings.channel
+        channelSection.removeAllViews()
+
+        channelSection.addView(
+            chipRow(
+                SourceChannel.entries.map { option ->
+                    chip(option.label, channel == option) {
+                        app.setChannel(option)
+                        fillChannelSection()
+                    }
+                },
+            ),
+            matchWidthWrap(),
+        )
+
+        channelSection.addView(space(activity, 10))
+        val unavailable = channel == SourceChannel.BLUETOOTH &&
+            !app.repository.hasAlternativeSource()
+        channelSection.addView(
+            textView(
+                activity,
+                app.repository.channelStateText(),
+                14,
+                if (unavailable) Palette.ACCENT else Palette.TEXT_SECONDARY,
+            ),
+        )
+        channelSection.addView(space(activity, 6))
+        channelSection.addView(
+            textView(
+                activity,
+                when (channel) {
+                    SourceChannel.AUTO ->
+                        "留「自动」就行：蓝牙通道能拿到歌名就用蓝牙，拿不到就读系统会话。\n" +
+                            "大部分车机不用改。"
+                    SourceChannel.BLUETOOTH ->
+                        "「蓝牙」只看蓝牙通道。车机用「媒体中心」放蓝牙音乐、系统会话里没有\n" +
+                            "歌名时选这个；车机没开放蓝牙媒体浏览服务时，这里读不到东西 ——\n" +
+                            "下面那行会直接说。"
+                    SourceChannel.SESSION ->
+                        "「系统会话」只看播放器自己报的媒体信息（媒体中心 / 网易云 / QQ 音乐）。\n" +
+                            "播放器会把歌词写进标题行的，用这个最稳。"
+                },
+                13,
+                Palette.TEXT_SECONDARY,
+            ).apply { setLineSpacing(0f, 1.4f) },
+        )
     }
 
     // ------------------------------------------------------

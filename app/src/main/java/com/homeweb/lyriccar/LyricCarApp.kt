@@ -16,6 +16,7 @@ import com.homeweb.lyriccar.model.LyricFieldPreference
 import com.homeweb.lyriccar.model.LyricSessionState
 import com.homeweb.lyriccar.model.MediaInfo
 import com.homeweb.lyriccar.model.PanelTone
+import com.homeweb.lyriccar.model.SourceChannel
 import com.homeweb.lyriccar.model.ThemeMode
 import java.io.File
 import kotlin.math.abs
@@ -75,7 +76,7 @@ class LyricCarApp : Application() {
             field = settings.field,
             log = { message -> diagnostics.log(message) },
         )
-        repository = MediaSourceCoordinator(this)
+        repository = MediaSourceCoordinator(this, settings.channel)
         repository.listener = { info ->
             lastInfo = info
             val state = engine.handle(info)
@@ -121,6 +122,16 @@ class LyricCarApp : Application() {
         settingsListener?.invoke(settings)
     }
 
+    /** 换播放信息的来源通道（自动 / 蓝牙 / 系统会话），立刻重选一次数据。 */
+    fun setChannel(channel: SourceChannel) {
+        if (settings.channel == channel) return
+        settings = settings.copy(channel = channel)
+        settings.save(directory)
+        repository.setChannel(channel)
+        diagnostics.log("[LyricCar] 设置：通道=${channel.label}")
+        settingsListener?.invoke(settings)
+    }
+
     /** 拖动分栏松手时写盘，不触发界面重建。 */
     fun setSplitRatio(ratio: Float) {
         val next = AppSettings.sanitizeSplitRatio(ratio)
@@ -153,6 +164,9 @@ class LyricCarApp : Application() {
                     listenerComponent = { repository.listenerComponentName() },
                     diagnose = { repository.diagnoseText() },
                     alternativeSource = { repository.hasAlternativeSource() },
+                    channelState = {
+                        "${settings.channel.label}（${repository.channelStateText()}）"
+                    },
                 )
             } catch (error: Exception) {
                 diagnostics.log("环境自查失败：$error")

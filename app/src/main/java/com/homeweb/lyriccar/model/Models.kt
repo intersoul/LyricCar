@@ -249,6 +249,29 @@ enum class ThemeMode(val label: String) {
     }
 }
 
+/**
+ * 播放信息从哪条通道读。
+ *
+ * 有的车机（比如部分比亚迪）拿「媒体中心」当播放器：它报「正在播放」和进度，
+ * 但 MediaSession 里的歌名 / 歌手是空的 —— 这时候系统会话这条路读不到歌，
+ * 得直接问蓝牙栈（A2DP Sink 的 MediaBrowserService）要。
+ */
+enum class SourceChannel(val label: String) {
+    /** 默认：蓝牙通道有真歌名就用它，否则读系统媒体会话。 */
+    AUTO("自动"),
+
+    /** 只读蓝牙通道：给「媒体中心放蓝牙音乐」这种系统会话没歌名的车机用。 */
+    BLUETOOTH("蓝牙"),
+
+    /** 只读系统媒体会话（媒体中心 / 网易云 / QQ 音乐自己报的）。 */
+    SESSION("系统会话");
+
+    companion object {
+        fun fromName(name: String?): SourceChannel =
+            entries.firstOrNull { it.name.equals(name, ignoreCase = true) } ?: AUTO
+    }
+}
+
 enum class LyricMode { IDLE, CAPTURING, REPLAY }
 
 /** 采集引擎对外的状态快照。 */

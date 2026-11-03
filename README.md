@@ -44,6 +44,7 @@
 - **蓝牙 MediaBrowser 优先**：本车机的蓝牙栈提供 `A2dpMediaBrowserService`，不用通知使用权就能读实时歌词字段和播放位置。
 - 读取系统媒体会话：标题 / 歌手 / 专辑 / 时长 / 播放位置 / 播放状态 / 来源 App / 封面。
 - 通知监听回退：MediaBrowser 不可用时，自动退回原来的 NotificationListenerService 方案。
+- **连接通道可选**：设置 → 连接通道，在「自动 / 蓝牙 / 系统会话」之间手动切。有的车机用「媒体中心」放蓝牙音乐，系统会话里只有播放进度、没有歌名，切到「蓝牙」就直接问蓝牙栈要；反过来也能只看系统会话。手动选「蓝牙」而车机没有蓝牙媒体浏览服务时，空界面会直接说明并给一个「改回自动通道」按钮。
 - 歌词采集：支持歌手行、专辑行、歌曲名行，以及「自动判断」。
 - 自动判断歌曲名行：标题在变、播放位置没有明显回退 → 判定歌词写在歌曲名行。
 - 按歌名优先匹配旧稿；歌名重名时按时长挑选；再用歌词文本验证匹配，错了能退回。
@@ -53,7 +54,7 @@
 - 歌词库：查看 / 预览 / 删除单首 / 清空全部；显示句数、完整性、来源。
 - 导出到系统「下载」目录；从下载目录导入；局域网 HTTP 传输（下载 / 上传 / 诊断日志）。
 - 诊断日志：自动落盘、256 KB 滚动、环境自查、导出 / 复制 / 清空 / 手机来取。
-- 设置：歌词写在（自动 / 歌手行 / 专辑行 / 歌曲名行）、界面常亮、深色 / 浅色外观。
+- 设置：歌词写在（自动 / 歌手行 / 专辑行 / 歌曲名行）、连接通道（自动 / 蓝牙 / 系统会话）、界面常亮、深色 / 浅色外观。
 - 歌词样式：字号（小 / 标准 / 大 / 特大）、行距（紧凑 / 标准 / 宽松）、左对齐 / 居中、当前句颜色（主题色 / 暖黄 / 粉 / 绿 / 橙 / 高对比），设置里带真实歌词控件预览，改完立刻生效。
 - 自定义背景：设置 → 背景，可以从系统文件管理器 / 图库选一张图片，用可拖动的「屏幕比例遮罩」框选要用的区域；也可以用纯色，或一键恢复默认背景。图片按屏幕大小压好存在应用私有目录，重启后仍然生效。
 - 左栏透明 / 半透明：图片背景下，左边控制栏可以整块透明（背景图直接露出来，只留中间那条分栏条），也可以铺一层半透明底，设置 → 背景 → 左栏底色。
@@ -131,16 +132,16 @@ app/src/main/res/                     主题、颜色、应用名、启动图标
 # 本机 Android Studio 自带 JBR（没有单独装 JDK 时）
 export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 
-./gradlew assembleDebug      # app/build/outputs/apk/debug/LyricCar v2.5.0-debug.apk
-./gradlew assembleRelease    # app/build/outputs/apk/release/LyricCar v2.5.0.apk
+./gradlew assembleDebug      # app/build/outputs/apk/debug/LyricCar v2.6.0-debug.apk
+./gradlew assembleRelease    # app/build/outputs/apk/release/LyricCar v2.6.0.apk
 ```
 
 APK 文件名按 `LyricCar v{版本号}` 生成，版本号在 `app/build.gradle.kts` 顶部的 `appVersionName` 里改一处，「关于」面板显示的是同一个值。
 
-本工程没有 native 库，生成的 APK 约 0.8 MB；直接安装 `LyricCar v2.5.0.apk` 即可。文件名带空格，命令行安装要加引号：
+本工程没有 native 库，生成的 APK 约 0.8 MB；直接安装 `LyricCar v2.6.0.apk` 即可。文件名带空格，命令行安装要加引号：
 
 ```bash
-adb install -r "app/build/outputs/apk/release/LyricCar v2.5.0.apk"
+adb install -r "app/build/outputs/apk/release/LyricCar v2.6.0.apk"
 ```
 
 发布签名口令放在 `app/key.properties`（已被 `.gitignore` 排除，模板见 `app/key.properties.example`）。没配这个文件时 release 会退回 debug 签名，只够本地跑通构建，**不要**拿那种包当正式包。
@@ -191,8 +192,29 @@ adb install -r "app/build/outputs/apk/release/LyricCar v2.5.0.apk"
 界面只有在两条路都不可用时才显示通知使用权 / ADB 引导。
 
 ⚠️ 这个 MediaBrowserService 是车机厂商自带的系统服务，不是 Android 公共 API。
-不同 BYD 车型、不同蓝牙芯片（MTK / 高通）、不同 OTA 版本可能没有或改名。
-代码会先做服务发现，失败再回退，不会因此崩溃。
+不同 BYD 车型、不同蓝牙芯片（MTK / 高通）、不同 OTA 版本可能没有、改名，甚至换个蓝牙包名。
+所以 App 启动时会把候选服务都找出来再逐个试：
+
+1. 两个已知组件名（高通 `a2dpsink.mbs.A2dpMediaBrowserService`、AOSP `avrcpcontroller.BluetoothMediaBrowserService`）；
+2. 蓝牙相关包（`com.android.bluetooth` / `com.byd.bluetooth` / `com.byd.bt` / `com.qualcomm.bluetooth`）里名字带 `MediaBrowser` 的导出服务；
+3. 其他声明了 `android.media.browse.MediaBrowserService` intent 的蓝牙相关服务。
+
+全都没连上就回退通知监听，不会崩溃。诊断日志里能看到「候选 N 个 / 当前候选 / 失败轮次」，换了车机把日志发回来就能判断是服务不存在还是连不上。
+
+### 连接通道（设置 → 连接通道）
+
+有的车机（实测：高通 trinket、Android 10）拿系统自带的「媒体中心」当播放器：它报「正在播放」和进度，
+但 MediaSession 里的歌名 / 歌手是空的 —— 歌其实来自蓝牙，元数据在蓝牙栈那边。这时可以手动切通道：
+
+| 通道 | 行为 |
+| --- | --- |
+| **自动**（默认） | 蓝牙通道有真歌名就用蓝牙，否则读系统媒体会话 |
+| **蓝牙** | 只看蓝牙通道 —— 给「媒体中心放蓝牙音乐、系统会话没歌名」的车机用 |
+| **系统会话** | 只看播放器自己报的媒体信息（媒体中心 / 网易云 / QQ 音乐） |
+
+手动选「蓝牙」而车机确实没有蓝牙媒体浏览服务时，空界面会直接说明原因并给「改回自动通道」按钮；
+主界面左下角状态行也会标出「蓝牙通道 / 蓝牙通道等待连接 / 蓝牙通道不可用」。
+环境自查里多了一行「数据通道」，分享日志时一眼就能看出走的是哪条路。
 
 **播放控制的限制**：蓝牙 A2DP Sink 的 `PlaybackState` 通常只声明
 `PLAY / PAUSE / SKIP_TO_NEXT` 等动作，不包含 `SEEK_TO`。所以在这类车机上
@@ -214,7 +236,9 @@ adb install -r "app/build/outputs/apk/release/LyricCar v2.5.0.apk"
 - 自定义图片背景 + 左栏整块透明：背景图直接铺到左边，控制栏只剩分栏条；「左栏底色」切半透明 / 透明立刻生效，重启后保留；
 - 置为竖屏（`adb shell wm size 720x1280`）后自动换成「上歌词 / 下控制栏」：封面、专辑行收起，标题一行放得下，分栏条能上下拖动；
 - 歌词库启动清理：真机上 167 首里清掉 5 首「1~3 句、覆盖 0~7 秒」的记录，2 句的纯音乐记录也一并清掉，完整稿和导入稿不动；
-- 左栏标题在「歌词写在歌曲名行」的播放器上固定显示歌名（不再跟着歌词跳），歌名从「歌手行 = 歌曲名 - 歌手」里切出来，歌手行同步只显示歌手。
+- 左栏标题在「歌词写在歌曲名行」的播放器上固定显示歌名（不再跟着歌词跳），歌名从「歌手行 = 歌曲名 - 歌手」里切出来，歌手行同步只显示歌手；
+- 连接通道实测：设置里切「蓝牙」后日志记下 `设置：通道=蓝牙`、状态行显示「蓝牙通道」、播放与采集不中断；切「系统会话」（本车未授予通知使用权）时立刻提示「先开一个系统权限」，切回「自动」后歌词立即恢复；通道选择在覆盖安装 / 重启后保留；
+- 蓝牙服务发现：本车候选 1 个（`com.android.bluetooth/.a2dpsink.mbs.A2dpMediaBrowserService`），诊断日志列出候选、当前候选和失败轮次。
 
 ## 用 adb 打开「通知使用权」
 
@@ -256,7 +280,7 @@ App 里所有 `[LyricCar]` 日志同时进 logcat 和 `diagnostics.log`。启动
 
 ```
 ──── 环境自查 ────
-App 版本 2.5.0
+App 版本 2.6.0
 ✓ 通知使用权：已授予
 监听组件：com.homeweb.lyriccar/com.homeweb.lyriccar.MediaSessionListenerService
 ──── 系统与会话 ────

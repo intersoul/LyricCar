@@ -30,6 +30,7 @@ import com.homeweb.lyriccar.model.LyricLine
 import com.homeweb.lyriccar.model.LyricMode
 import com.homeweb.lyriccar.model.LyricSessionState
 import com.homeweb.lyriccar.model.PanelTone
+import com.homeweb.lyriccar.model.SourceChannel
 import com.homeweb.lyriccar.model.ThemeMode
 import com.homeweb.lyriccar.model.artistFromTitleArtistLine
 import com.homeweb.lyriccar.model.normalizeTitle
@@ -68,6 +69,7 @@ class MainScreen(
     private var lastState = LyricSessionState()
     private var lastAccess: Boolean? = null
     private var lastBrowserAvailable = false
+    private var lastChannel: SourceChannel = app.settings.channel
     private var dragging = false
     private var lastArtUri = ""
     private var lastArtBytes: ByteArray? = null
@@ -610,7 +612,7 @@ class MainScreen(
                 } else {
                     "$stored · 回放中"
                 }
-        }
+        } + channelNote()
         if (statusText.text.toString() != status) statusText.text = status
 
         if (state.mode == LyricMode.IDLE) {
@@ -708,38 +710,84 @@ class MainScreen(
         val granted = try { app.repository.hasNotificationAccess() } catch (_: Exception) { false }
         val browserAvailable = app.repository.hasAlternativeSource()
         if (lastAccess == granted && lastBrowserAvailable == browserAvailable &&
-            idleColumn.childCount > 0
+            lastChannel == app.settings.channel && idleColumn.childCount > 0
         ) {
             return
         }
         lastAccess = granted
         lastBrowserAvailable = browserAvailable
+        lastChannel = app.settings.channel
         rebuildIdle(granted, browserAvailable)
+    }
+
+    /** 设置里换了通道：状态行和空界面都要跟着换说明。 */
+    fun onChannelChanged() {
+        if (lastChannel == app.settings.channel) return
+        render(app.currentState())
+        refreshNotificationAccess()
+    }
+
+    /** 状态行末尾的通道提示：只有手动指定通道时才占位置。 */
+    private fun channelNote(): String = when (app.settings.channel) {
+        SourceChannel.AUTO -> ""
+        SourceChannel.BLUETOOTH -> when {
+            !app.repository.hasAlternativeSource() -> " · 蓝牙通道不可用"
+            app.repository.bluetoothConnected() -> " · 蓝牙通道"
+            else -> " · 蓝牙通道等待连接"
+        }
+        SourceChannel.SESSION -> " · 系统会话"
+    }
+
+    private fun idleTitle(text: String): LinearLayout {
+        val row = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        row.addView(textView(activity, "♫", 26, Palette.ACCENT))
+        row.addView(space(activity, 0).apply {
+            layoutParams = LinearLayout.LayoutParams(activity.dp(10), 1)
+        })
+        row.addView(textView(activity, text, 24, Palette.TEXT_PRIMARY, bold = true))
+        return row
     }
 
     private fun rebuildIdle(granted: Boolean, browserAvailable: Boolean) {
         idleColumn.removeAllViews()
-        val titleRow = LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+        val channel = app.settings.channel
+        if (channel == SourceChannel.BLUETOOTH && !browserAvailable) {
+            idleColumn.addView(idleTitle("蓝牙通道不可用"), matchWidthWrap())
+            idleColumn.addView(space(activity, 18))
+            idleColumn.addView(
+                bodyText(
+                    "通道被手动设成了「蓝牙」，但这台车机的系统里找不到蓝牙媒体浏览器服务，\n" +
+                        "所以现在读不到任何播放信息。\n\n" +
+                        "「蓝牙」是给「用媒体中心放蓝牙音乐、系统会话里没有歌名」的车机准备的；\n" +
+                        "如果你的车机不在这个情况里，切回「自动」就好。",
+                ),
+                matchWidthWrap(),
+            )
+            idleColumn.addView(space(activity, 22))
+            idleColumn.addView(
+                outlinedButton(activity, "改回自动通道") {
+                    app.setChannel(SourceChannel.AUTO)
+                },
+                LinearLayout.LayoutParams(
+                    LayoutParams.WRAP_CONTENT,
+                    LayoutParams.WRAP_CONTENT,
+                ),
+            )
+            idleColumn.addView(space(activity, 18))
+            idleColumn.addView(bodyText(app.repository.channelStateText()), matchWidthWrap())
+            return
         }
-        titleRow.addView(textView(activity, "♫", 26, Palette.ACCENT))
-        titleRow.addView(space(activity, 0).apply {
-            layoutParams = LinearLayout.LayoutParams(activity.dp(10), 1)
-        })
-        titleRow.addView(
-            textView(
-                activity,
-                if (granted || browserAvailable) "等待音乐播放" else "先开一个系统权限",
-                24,
-                Palette.TEXT_PRIMARY,
-                bold = true,
-            ),
+        val needAccess = !granted && (!browserAvailable || channel == SourceChannel.SESSION)
+        idleColumn.addView(
+            idleTitle(if (needAccess) "先开一个系统权限" else "等待音乐播放"),
+            matchWidthWrap(),
         )
-        idleColumn.addView(titleRow, matchWidthWrap())
         idleColumn.addView(space(activity, 18))
 
-        if (!granted && !browserAvailable) {
+        if (needAccess) {
             idleColumn.addView(
                 bodyText(
                     "读取不了「正在播放哪首歌」的话，歌词就无从采起。\n" +
@@ -775,10 +823,13 @@ class MainScreen(
             } else {
                 ""
             }
-            val readyText = if (browserAvailable && !granted) {
-                "蓝牙媒体浏览器已就绪。"
-            } else {
-                "权限已就绪。"
+            val readyText = when {
+                channel == SourceChannel.BLUETOOTH ->
+                    "通道：蓝牙（只看蓝牙通道里的播放信息）。"
+                channel == SourceChannel.SESSION ->
+                    "通道：系统会话（只读播放器自己报的媒体信息）。"
+                browserAvailable && !granted -> "蓝牙媒体浏览器已就绪。"
+                else -> "权限已就绪。"
             }
             idleColumn.addView(
                 bodyText(
