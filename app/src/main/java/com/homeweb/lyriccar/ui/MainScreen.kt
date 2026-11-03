@@ -112,9 +112,11 @@ class MainScreen(
             orientation = LinearLayout.VERTICAL
         }
         titleText = textView(activity, "未在播放", 24, Palette.TEXT_PRIMARY, bold = true).apply {
-            maxLines = 2
+            // 歌词写在歌曲名行时，这里就是当前这句歌词：允许换行，别再把第二行切掉。
+            maxLines = 4
             ellipsize = TextUtils.TruncateAt.END
             setLineSpacing(0f, 1.25f)
+            minHeight = activity.dp(60)
         }
         artistText = textView(activity, "歌手：—", 15, Palette.TEXT_SECONDARY).apply {
             maxLines = 1
@@ -135,7 +137,7 @@ class MainScreen(
             titleText,
             LinearLayout.LayoutParams(
                 LayoutParams.MATCH_PARENT,
-                activity.dp(60),
+                LayoutParams.WRAP_CONTENT,
             ),
         )
         textColumn.addView(space(activity, 10))
