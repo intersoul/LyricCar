@@ -162,6 +162,12 @@ class MainScreen(
         leftColumn.addView(topRow, matchWidthWrap())
 
         leftColumn.addView(space(activity, 26))
+        // 进度条以下的控件钉在底部：左边标题一句长一句短时，下面整排控件不再跟着上下跳。
+        // ScrollView 开了 fillViewport，内容没超过一屏时这个占位会把下面的内容顶到底。
+        leftColumn.addView(
+            View(activity),
+            LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f),
+        )
 
         // 进度条 + 时间
         val progressColumn = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
