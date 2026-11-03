@@ -2,9 +2,13 @@ package com.homeweb.lyriccar.ui
 
 import android.app.Activity
 import android.content.res.ColorStateList
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.LayerDrawable
 import android.os.Build
 import android.text.TextUtils
 import android.util.TypedValue
@@ -21,9 +25,11 @@ import android.widget.SeekBar
 import android.widget.TextView
 import com.homeweb.lyriccar.LyricCarApp
 import com.homeweb.lyriccar.data.AppSettings
+import com.homeweb.lyriccar.model.BackgroundMode
 import com.homeweb.lyriccar.model.LyricLine
 import com.homeweb.lyriccar.model.LyricMode
 import com.homeweb.lyriccar.model.LyricSessionState
+import com.homeweb.lyriccar.model.ThemeMode
 import com.homeweb.lyriccar.transfer.DownloadsRepository
 import java.util.Locale
 
@@ -67,6 +73,8 @@ class MainScreen(
     private val rightPanel: FrameLayout
     private val splitHandle: SplitHandle
     private var splitFraction = AppSettings.DEFAULT_SPLIT_RATIO
+    private var backgroundBitmap: Bitmap? = null
+    private var backgroundStamp = -1L
 
     init {
         setBackgroundColor(Palette.BACKGROUND)
@@ -388,6 +396,7 @@ class MainScreen(
 
         applyInsets()
         applyLyricDisplay()
+        applyBackground()
         render(lastState)
         refreshNotificationAccess()
     }
@@ -395,6 +404,64 @@ class MainScreen(
     /** 设置里的歌词样式变了：立刻套到正在显示的歌词上，不重建界面。 */
     fun applyLyricDisplay() {
         lyricsView.applyStyle(lyricStyleOf(app.settings.lyric))
+    }
+
+    /** 主界面背景：默认 / 纯色 / 自定义图片（图片会带一层主题遮罩，保证歌词看得清）。 */
+    fun applyBackground() {
+        when (app.settings.background.mode) {
+            BackgroundMode.DEFAULT -> {
+                dropBackgroundBitmap()
+                setBackgroundColor(Palette.BACKGROUND)
+                leftPanel.background = leftPanelBackground()
+                rightPanel.setBackgroundColor(Palette.BACKGROUND)
+            }
+
+            BackgroundMode.COLOR -> {
+                dropBackgroundBitmap()
+                setBackgroundColor(
+                    app.settings.background.color.colorFor(Palette.mode == ThemeMode.LIGHT),
+                )
+                leftPanel.background = null
+                rightPanel.setBackgroundColor(Color.TRANSPARENT)
+            }
+
+            BackgroundMode.IMAGE -> {
+                val file = app.backgroundImageFile()
+                val stamp = file.lastModified()
+                if (backgroundBitmap == null || stamp != backgroundStamp) {
+                    dropBackgroundBitmap()
+                    backgroundBitmap = BackgroundImages.loadSaved(activity)
+                    backgroundStamp = stamp
+                }
+                val bitmap = backgroundBitmap
+                if (bitmap == null || bitmap.isRecycled) {
+                    // 图片丢了就退回默认背景，别留一块黑
+                    setBackgroundColor(Palette.BACKGROUND)
+                    leftPanel.background = leftPanelBackground()
+                    rightPanel.setBackgroundColor(Palette.BACKGROUND)
+                } else {
+                    val image = BitmapDrawable(resources, bitmap).apply {
+                        gravity = Gravity.FILL
+                        isFilterBitmap = true
+                    }
+                    val scrim = ColorDrawable(
+                        withAlpha(
+                            Palette.BACKGROUND,
+                            if (Palette.mode == ThemeMode.LIGHT) 180 else 150,
+                        ),
+                    )
+                    setBackground(LayerDrawable(arrayOf(image, scrim)))
+                    leftPanel.background = leftPanelBackground(alpha = 200)
+                    rightPanel.setBackgroundColor(Color.TRANSPARENT)
+                }
+            }
+        }
+    }
+
+    private fun dropBackgroundBitmap() {
+        backgroundBitmap?.let { if (!it.isRecycled) it.recycle() }
+        backgroundBitmap = null
+        backgroundStamp = -1L
     }
 
     private fun mediaButton(iconRes: Int, sizeDp: Int, onClick: () -> Unit): ImageButton =

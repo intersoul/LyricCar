@@ -142,9 +142,9 @@ fun roundedBackground(
     if (strokeColor != null) setStroke(dpF(strokeWidthDp).toInt(), strokeColor)
 }
 
-fun leftPanelBackground(): GradientDrawable = GradientDrawable(
+fun leftPanelBackground(alpha: Int = 255): GradientDrawable = GradientDrawable(
     GradientDrawable.Orientation.TL_BR,
-    intArrayOf(Palette.PANEL_TOP, Palette.BACKGROUND),
+    intArrayOf(withAlpha(Palette.PANEL_TOP, alpha), withAlpha(Palette.BACKGROUND, alpha)),
 )
 
 fun textView(

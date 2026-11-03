@@ -1,15 +1,21 @@
 package com.homeweb.lyriccar.ui
 
 import android.app.Activity
+import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.os.Build
+import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.view.WindowInsetsController
 import android.view.WindowManager
 import com.homeweb.lyriccar.LyricCarApp
 import com.homeweb.lyriccar.data.AppSettings
+import com.homeweb.lyriccar.data.Diagnostics
+import com.homeweb.lyriccar.model.BackgroundMode
+import com.homeweb.lyriccar.model.BackgroundStyle
 import com.homeweb.lyriccar.model.LyricSessionState
 import com.homeweb.lyriccar.model.ThemeMode
 import com.homeweb.lyriccar.transfer.DownloadsRepository
@@ -24,7 +30,10 @@ class MainActivity : Activity() {
     private val stateHandler: (LyricSessionState) -> Unit = { state -> screen.render(state) }
     private val settingsHandler: (AppSettings) -> Unit = {
         applyKeepScreenOn()
-        if (::screen.isInitialized) screen.applyLyricDisplay()
+        if (::screen.isInitialized) {
+            screen.applyLyricDisplay()
+            screen.applyBackground()
+        }
         applyThemeIfNeeded()
     }
 
@@ -103,6 +112,87 @@ class MainActivity : Activity() {
         super.onDestroy()
     }
 
+    /** 打开系统文件管理器 / 图库选一张背景图。 */
+    fun pickBackgroundImage() {
+        // 优先用系统自带的 DocumentsUI：它会把选中文件的读权限一起授过来。
+        // 部分车机文件管理器（实测 BYD）返回的是没授权的 content:// URI，读不了。
+        val candidates = listOf(
+            Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "image/*"
+                setPackage("com.android.documentsui")
+            },
+            Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "image/*"
+            },
+            Intent(Intent.ACTION_GET_CONTENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "image/*"
+            },
+        )
+        for (intent in candidates) {
+            try {
+                Diagnostics.log("[背景] 打开选择器：${intent.action}")
+                startActivityForResult(intent, REQUEST_BACKGROUND_IMAGE)
+                return
+            } catch (error: Exception) {
+                Diagnostics.log("[背景] 打开选择器失败：$error")
+            }
+        }
+        toast(this, "这台车机没有可用的图片选择器")
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQUEST_BACKGROUND_IMAGE) return
+        val uri: Uri = data?.data ?: run {
+            Diagnostics.log("[背景] 选择器返回但没有图片：resultCode=$resultCode")
+            return
+        }
+        Diagnostics.log("[背景] 选择器返回：resultCode=$resultCode uri=$uri")
+        toast(this, "正在读取图片…")
+        Thread {
+            val bitmap = try {
+                BackgroundImages.load(this, uri)
+            } catch (error: Exception) {
+                Diagnostics.log("[背景] 读取异常：$error")
+                null
+            }
+            Diagnostics.log(
+                "[背景] 解码结果：" + (
+                    bitmap?.let { "${it.width}x${it.height}" } ?: "失败"
+                    ),
+            )
+            runOnUiThread {
+                if (bitmap == null) {
+                    toast(this, "这张图片读不出来，换一张试试")
+                } else {
+                    showBackgroundCropper(bitmap)
+                }
+            }
+        }.start()
+    }
+
+    private fun showBackgroundCropper(bitmap: Bitmap) {
+        BackgroundCropperDialog(this, bitmap) { cropped ->
+            val saved = BackgroundImages.save(this, cropped, BackgroundImages.targetWidth(this))
+            if (saved) {
+                app.setBackground(
+                    BackgroundStyle(
+                        mode = BackgroundMode.IMAGE,
+                        color = app.settings.background.color,
+                        imageName = LyricCarApp.BACKGROUND_IMAGE_NAME,
+                    ),
+                )
+                toast(this, "背景已更新")
+            } else {
+                toast(this, "保存背景失败")
+            }
+            if (!cropped.isRecycled) cropped.recycle()
+        }.show()
+    }
+
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
@@ -118,5 +208,9 @@ class MainActivity : Activity() {
         } else {
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
+    }
+
+    private companion object {
+        const val REQUEST_BACKGROUND_IMAGE = 1001
     }
 }

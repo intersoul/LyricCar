@@ -33,6 +33,9 @@ import com.homeweb.lyriccar.BuildConfig
 import com.homeweb.lyriccar.LyricCarApp
 import com.homeweb.lyriccar.R
 import com.homeweb.lyriccar.lan.LyricLanServer
+import com.homeweb.lyriccar.model.BackgroundColorPreset
+import com.homeweb.lyriccar.model.BackgroundMode
+import com.homeweb.lyriccar.model.BackgroundStyle
 import com.homeweb.lyriccar.model.LyricAlignment
 import com.homeweb.lyriccar.model.LyricColorPreset
 import com.homeweb.lyriccar.model.LyricDisplay
@@ -518,6 +521,7 @@ class SettingsSheet(
 ) {
     private val sheet = SheetDialog(activity, "设置")
     private lateinit var styleSection: LinearLayout
+    private lateinit var backgroundSection: LinearLayout
 
     fun show() {
         rebuild()
@@ -635,6 +639,13 @@ class SettingsSheet(
         styleSection = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
         body.addView(styleSection, matchWidthWrap())
         fillStyleSection()
+
+        body.addView(space(activity, 22))
+        body.addView(textView(activity, "背景", 18, Palette.TEXT_SECONDARY))
+        body.addView(space(activity, 10))
+        backgroundSection = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+        body.addView(backgroundSection, matchWidthWrap())
+        fillBackgroundSection()
 
         body.addView(space(activity, 22))
 
@@ -773,6 +784,99 @@ class SettingsSheet(
             background = roundedBackground(Palette.SURFACE_LIGHT, 12)
             addView(preview, LayoutParams.MATCH_PARENT, activity.dp(PREVIEW_HEIGHT_DP))
         }
+    }
+
+    // ------------------------------------------------------
+    // 背景
+    // ------------------------------------------------------
+    private fun fillBackgroundSection() {
+        val bg = app.settings.background
+        backgroundSection.removeAllViews()
+
+        backgroundSection.addView(
+            textView(
+                activity,
+                when (bg.mode) {
+                    BackgroundMode.DEFAULT -> "当前：默认背景"
+                    BackgroundMode.IMAGE -> "当前：自定义图片"
+                    BackgroundMode.COLOR -> "当前：纯色 · ${bg.color.label}"
+                },
+                14,
+                Palette.TEXT_SECONDARY,
+            ),
+        )
+        backgroundSection.addView(space(activity, 10))
+        backgroundSection.addView(
+            outlinedButton(activity, "从图库选择图片", hPadding = 18) {
+                val host = activity as? MainActivity
+                if (host == null) {
+                    toast(activity, "当前界面无法选择图片")
+                } else {
+                    sheet.dialog.dismiss()
+                    host.pickBackgroundImage()
+                }
+            },
+            matchWidthWrap(),
+        )
+
+        backgroundSection.addView(space(activity, 12))
+        backgroundSection.addView(styleLabel("纯色"))
+        backgroundSection.addView(space(activity, 8))
+        backgroundSection.addView(backgroundColors(bg), matchWidthWrap())
+
+        if (bg.imageName.isNotEmpty() && bg.mode != BackgroundMode.IMAGE) {
+            backgroundSection.addView(space(activity, 8))
+            backgroundSection.addView(
+                textButton(activity, "用回上次的图片") {
+                    app.setBackground(bg.copy(mode = BackgroundMode.IMAGE, imageName = bg.imageName))
+                    fillBackgroundSection()
+                },
+            )
+        }
+
+        if (bg.mode != BackgroundMode.DEFAULT) {
+            backgroundSection.addView(space(activity, 8))
+            backgroundSection.addView(
+                outlinedButton(activity, "恢复默认背景", hPadding = 18) {
+                    app.resetBackground()
+                    fillBackgroundSection()
+                },
+                matchWidthWrap(),
+            )
+        }
+    }
+
+    private fun backgroundColors(bg: BackgroundStyle): LinearLayout {
+        val light = Palette.mode == ThemeMode.LIGHT
+        val row = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        BackgroundColorPreset.entries.forEach { preset ->
+            val selected = bg.mode == BackgroundMode.COLOR && bg.color == preset
+            val swatch = View(activity).apply {
+                background = roundedBackground(
+                    preset.colorFor(light),
+                    999,
+                    if (selected) Palette.TEXT_PRIMARY else Palette.STROKE,
+                    if (selected) 2 else 1,
+                )
+                layoutParams = LinearLayout.LayoutParams(activity.dp(40), activity.dp(40))
+                contentDescription = preset.label
+                isClickable = true
+                setOnClickListener {
+                    app.setBackground(
+                        bg.copy(mode = BackgroundMode.COLOR, color = preset),
+                    )
+                    fillBackgroundSection()
+                }
+            }
+            row.addView(swatch)
+            row.addView(space(activity, 0).apply {
+                layoutParams = LinearLayout.LayoutParams(activity.dp(10), 1)
+            })
+        }
+        return row
     }
 
     private fun styleLabel(text: String): TextView =

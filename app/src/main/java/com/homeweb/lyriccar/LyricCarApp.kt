@@ -9,11 +9,14 @@ import com.homeweb.lyriccar.data.Diagnostics
 import com.homeweb.lyriccar.data.LyricStore
 import com.homeweb.lyriccar.data.carlyricDirectory
 import com.homeweb.lyriccar.media.MediaSourceCoordinator
+import com.homeweb.lyriccar.model.BackgroundMode
+import com.homeweb.lyriccar.model.BackgroundStyle
 import com.homeweb.lyriccar.model.LyricDisplay
 import com.homeweb.lyriccar.model.LyricFieldPreference
 import com.homeweb.lyriccar.model.LyricSessionState
 import com.homeweb.lyriccar.model.MediaInfo
 import com.homeweb.lyriccar.model.ThemeMode
+import java.io.File
 import kotlin.math.abs
 
 /**
@@ -147,7 +150,35 @@ class LyricCarApp : Application() {
         }
     }
 
+    /** 主界面背景变更：立刻应用，不需要重建界面。 */
+    fun setBackground(style: BackgroundStyle) {
+        if (settings.background == style) return
+        settings = settings.copy(background = style)
+        settings.save(directory)
+        val label = when (style.mode) {
+            BackgroundMode.DEFAULT -> "默认"
+            BackgroundMode.IMAGE -> "自定义图片"
+            BackgroundMode.COLOR -> "纯色 ${style.color.label}"
+        }
+        diagnostics.log("[LyricCar] 设置：背景=$label")
+        settingsListener?.invoke(settings)
+    }
+
+    /** 自定义背景图片存在这里的私有目录，不申请存储权限。 */
+    fun backgroundImageFile(): File = File(directory, BACKGROUND_IMAGE_NAME)
+
+    /** 恢复默认背景，并删掉已经保存的图片。 */
+    fun resetBackground() {
+        val file = backgroundImageFile()
+        if (file.exists()) file.delete()
+        setBackground(BackgroundStyle())
+    }
+
     fun notifyState() {
         mainHandler.post { stateListener?.invoke(lastState) }
+    }
+
+    companion object {
+        const val BACKGROUND_IMAGE_NAME = "background.jpg"
     }
 }

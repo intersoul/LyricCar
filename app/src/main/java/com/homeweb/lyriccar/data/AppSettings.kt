@@ -1,5 +1,8 @@
 package com.homeweb.lyriccar.data
 
+import com.homeweb.lyriccar.model.BackgroundColorPreset
+import com.homeweb.lyriccar.model.BackgroundMode
+import com.homeweb.lyriccar.model.BackgroundStyle
 import com.homeweb.lyriccar.model.LyricAlignment
 import com.homeweb.lyriccar.model.LyricColorPreset
 import com.homeweb.lyriccar.model.LyricDisplay
@@ -19,6 +22,8 @@ data class AppSettings(
     val splitRatio: Float = DEFAULT_SPLIT_RATIO,
     /** 歌词显示样式：字号 / 行距 / 对齐 / 当前句颜色。 */
     val lyric: LyricDisplay = LyricDisplay(),
+    /** 主界面背景：默认 / 图片 / 纯色。 */
+    val background: BackgroundStyle = BackgroundStyle(),
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("field", field.name.lowercase())
@@ -29,6 +34,9 @@ data class AppSettings(
         put("lyricSpacing", lyric.spacing.name.lowercase())
         put("lyricAlign", lyric.alignment.name.lowercase())
         put("lyricColor", lyric.color.name.lowercase())
+        put("bgMode", background.mode.name.lowercase())
+        put("bgColor", background.color.name.lowercase())
+        put("bgImage", background.imageName)
     }
 
     fun save(directory: File) {
@@ -72,6 +80,11 @@ data class AppSettings(
                         spacing = LyricLineSpacing.fromName(json.optString("lyricSpacing")),
                         alignment = LyricAlignment.fromName(json.optString("lyricAlign")),
                         color = LyricColorPreset.fromName(json.optString("lyricColor")),
+                    ),
+                    background = BackgroundStyle(
+                        mode = BackgroundMode.fromName(json.optString("bgMode")),
+                        color = BackgroundColorPreset.fromName(json.optString("bgColor")),
+                        imageName = json.optString("bgImage"),
                     ),
                 )
             } catch (error: Exception) {
