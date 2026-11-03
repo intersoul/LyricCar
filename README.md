@@ -56,9 +56,13 @@
 - 设置：歌词写在（自动 / 歌手行 / 专辑行 / 歌曲名行）、界面常亮、深色 / 浅色外观。
 - 歌词样式：字号（小 / 标准 / 大 / 特大）、行距（紧凑 / 标准 / 宽松）、左对齐 / 居中、当前句颜色（主题色 / 暖黄 / 粉 / 绿 / 橙 / 高对比），设置里带真实歌词控件预览，改完立刻生效。
 - 自定义背景：设置 → 背景，可以从系统文件管理器 / 图库选一张图片，用可拖动的「屏幕比例遮罩」框选要用的区域；也可以用纯色，或一键恢复默认背景。图片按屏幕大小压好存在应用私有目录，重启后仍然生效。
+- 左栏透明 / 半透明：图片背景下，左边控制栏可以整块透明（背景图直接露出来，只留中间那条分栏条），也可以铺一层半透明底，设置 → 背景 → 左栏底色。
 - 左右分栏可拖动：中间的分割线用手指左右拖就能改两栏宽度，松手即存，双击恢复默认比例。
+- 竖屏 / 分屏也能用：窗口竖着（竖屏车机、或「平行世界」里被挤成竖条）时自动换成「上边整块歌词 + 下边有一条控制栏」的排法，封面不占地方，分栏条照样能拖。
+- 左栏标题固定显示歌名：不跟着歌词一句句跳；半截插进来听的歌不会把当时那句歌词当成歌名（从头放一遍才记）。
+- 歌词库自动清理：每次启动把「不到 5 句」或「只覆盖 10 秒以内」的记录删掉 —— 列表里滑过去、没完整听的歌不用占地方；自己导入的不动。
 - 关于面板：版本号、开发者、GitHub 地址、版权声明，链接可一键打开 / 复制。
-- 横屏全屏；不申请多余权限（Android 10+ 导出不需要存储权限）。
+- 不锁横屏，不申请多余权限（Android 10+ 导出不需要存储权限）。
 
 ## 工程结构
 
@@ -85,8 +89,8 @@ app/src/main/java/com/homeweb/lyriccar/
 ├── lan/
 │   └── LyricLanServer.kt             局域网 HTTP 服务（页面 / JSON / 日志 / multipart 上传）
 └── ui/
-    ├── MainActivity.kt               横屏全屏宿主 Activity
-    ├── MainScreen.kt                 左「正在播放」+ 右歌词的主界面
+    ├── MainActivity.kt               全屏宿主 Activity（横 / 竖屏都行）
+    ├── MainScreen.kt                 左「正在播放」+ 右歌词的主界面（竖屏时改成上歌词 / 下控制栏）
     ├── LyricsView.kt                 自绘歌词列表（高亮 / 居中滚动 / 点击跳转 / 样式可调）
     ├── LyricStyle.kt                 把设置里的样式解析成颜色和倍数
     ├── BackgroundCropper.kt          背景图片读取 / 裁剪遮罩 / 保存
@@ -127,16 +131,16 @@ app/src/main/res/                     主题、颜色、应用名、启动图标
 # 本机 Android Studio 自带 JBR（没有单独装 JDK 时）
 export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 
-./gradlew assembleDebug      # app/build/outputs/apk/debug/LyricCar v2.4.0-debug.apk
-./gradlew assembleRelease    # app/build/outputs/apk/release/LyricCar v2.4.0.apk
+./gradlew assembleDebug      # app/build/outputs/apk/debug/LyricCar v2.5.0-debug.apk
+./gradlew assembleRelease    # app/build/outputs/apk/release/LyricCar v2.5.0.apk
 ```
 
 APK 文件名按 `LyricCar v{版本号}` 生成，版本号在 `app/build.gradle.kts` 顶部的 `appVersionName` 里改一处，「关于」面板显示的是同一个值。
 
-本工程没有 native 库，生成的 APK 约 0.8 MB；直接安装 `LyricCar v2.4.0.apk` 即可。文件名带空格，命令行安装要加引号：
+本工程没有 native 库，生成的 APK 约 0.8 MB；直接安装 `LyricCar v2.5.0.apk` 即可。文件名带空格，命令行安装要加引号：
 
 ```bash
-adb install -r "app/build/outputs/apk/release/LyricCar v2.4.0.apk"
+adb install -r "app/build/outputs/apk/release/LyricCar v2.5.0.apk"
 ```
 
 发布签名口令放在 `app/key.properties`（已被 `.gitignore` 排除，模板见 `app/key.properties.example`）。没配这个文件时 release 会退回 debug 签名，只够本地跑通构建，**不要**拿那种包当正式包。
@@ -145,7 +149,7 @@ adb install -r "app/build/outputs/apk/release/LyricCar v2.4.0.apk"
 
 ## 安装与首次使用
 
-1. 装到车机上（横屏）。
+1. 装到车机上（横屏、竖屏都能用）。
 2. 先直接放歌试试：
    - 本车机的蓝牙栈提供 `A2dpMediaBrowserService`，App 会自动接上它，**不需要通知使用权**；
    - 如果你的车型没有这个服务，界面会按提示要求授予**通知使用权**（Android 允许普通 App 读取别人媒体会话的入口）。
@@ -158,7 +162,7 @@ adb install -r "app/build/outputs/apk/release/LyricCar v2.4.0.apk"
 7. 左右两栏中间那条线可以直接手指左右拖动，改两栏宽度；松手自动记住，双击那条线恢复默认 40%。
 8. 白天屏幕反光看不清，去「设置 → 外观」切成「浅色」；想换回来切「深色」即可，设置会记住。
 9. 歌词字太小 / 想居中 / 想换个颜色，去「设置 → 歌词样式」：字号、行距、左对齐 / 居中、当前句颜色都能调，面板里就是用真实歌词控件做的预览，改完立刻生效。
-10. 想换背景，去「设置 → 背景」：点「从图库选择图片」，在系统文件管理器 / 图库里选图，再用可拖动的遮罩选框挑区域，点「使用这张」即可；也可以直接点纯色色块，或者「恢复默认背景」。
+10. 想换背景，去「设置 → 背景」：点「从图库选择图片」，在系统文件管理器 / 图库里选图，再用可拖动的遮罩选框挑区域，点「使用这张」即可；也可以直接点纯色色块，或者「恢复默认背景」。选图片时「左栏底色」决定左边控制栏是透明还是半透明。
 
 如果一直采不到歌词，去「设置 → 歌词写在」把手动档切成「专辑行 / 歌手行 / 歌曲名行」试试 —— 左侧面板把三行原始内容显示出来，就是给这个排查用的。
 
@@ -206,7 +210,11 @@ adb install -r "app/build/outputs/apk/release/LyricCar v2.4.0.apk"
 - 主界面、设置面板、歌词库列表 / 单曲预览、诊断日志面板正常；
 - 实放一首蓝牙歌曲时自动识别「歌词写在歌曲名行」，连续采集并同步滚动高亮；
 - 导出歌词库 / 诊断日志到系统「下载」目录成功；
-- 局域网 HTTP 服务在真机上能返回首页、歌词库 JSON 和诊断日志，关掉面板后端口停止监听。
+- 局域网 HTTP 服务在真机上能返回首页、歌词库 JSON 和诊断日志，关掉面板后端口停止监听；
+- 自定义图片背景 + 左栏整块透明：背景图直接铺到左边，控制栏只剩分栏条；「左栏底色」切半透明 / 透明立刻生效，重启后保留；
+- 置为竖屏（`adb shell wm size 720x1280`）后自动换成「上歌词 / 下控制栏」：封面、专辑行收起，标题一行放得下，分栏条能上下拖动；
+- 歌词库启动清理：真机上 167 首里清掉 5 首「1~3 句、覆盖 0~7 秒」的记录，2 句的纯音乐记录也一并清掉，完整稿和导入稿不动；
+- 左栏标题在「歌词写在歌曲名行」的播放器上固定显示歌名（不再跟着歌词跳），歌名从「歌手行 = 歌曲名 - 歌手」里切出来，歌手行同步只显示歌手。
 
 ## 用 adb 打开「通知使用权」
 
@@ -248,7 +256,7 @@ App 里所有 `[LyricCar]` 日志同时进 logcat 和 `diagnostics.log`。启动
 
 ```
 ──── 环境自查 ────
-App 版本 2.4.0
+App 版本 2.5.0
 ✓ 通知使用权：已授予
 监听组件：com.homeweb.lyriccar/com.homeweb.lyriccar.MediaSessionListenerService
 ──── 系统与会话 ────

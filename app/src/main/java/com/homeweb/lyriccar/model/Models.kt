@@ -86,6 +86,12 @@ fun lyricIndexAt(lines: List<LyricLine>, positionMs: Long): Int {
 /** 同一句重采的时间容差（毫秒）。 */
 const val LYRIC_MERGE_WINDOW_MS = 1500L
 
+/** 歌词库里少于这么多句的记录算「没采到什么东西」。 */
+const val MIN_LIBRARY_LINES = 5
+
+/** 歌词库里只覆盖了这么短一段播放时间的记录算「听了个开头就跳走了」。 */
+const val MIN_LIBRARY_SPAN_MS = 10_000L
+
 /**
  * 把一句新采到的歌词并进 lines。
  *
@@ -133,6 +139,23 @@ data class StoredSong(
 ) {
     /** 至少两句才算有歌词 —— 只抓到一句多半是把真歌手 / 真专辑误当歌词了。 */
     val usable: Boolean get() = lines.size >= 2
+
+    /** 存下来的歌词覆盖了多长一段播放时间（第一句到最末一句）。 */
+    val spanMs: Long
+        get() = if (lines.size < 2) 0L else lines.last().timeMs - lines.first().timeMs
+
+    /**
+     * 值不值得留在歌词库。
+     *
+     * 「不到 5 句」或者「歌词只覆盖了 10 秒以内」的多半是滑过、跳过的歌 ——
+     * 纯音乐那种只有两行作曲 / 作词信息的也算在内，留着也唱不出歌词。
+     * 用户自己导入的不动。每次启动时清掉这些，不必占着歌词库。
+     */
+    val weakForLibrary: Boolean
+        get() {
+            if (source == LyricSource.IMPORTED) return false
+            return lines.size < MIN_LIBRARY_LINES || spanMs < MIN_LIBRARY_SPAN_MS
+        }
 
     val displayName: String get() = songName.trim().ifEmpty { title }
 
@@ -241,6 +264,14 @@ class LyricSessionState(
     val derivedPositionMs: Long? = null,
     val playingNow: Boolean = false,
     val positionStale: Boolean = false,
+    /**
+     * 左栏标题栏显示的歌名。
+     *
+     * 歌词写在歌曲名行的播放器（网易云 / QQ 音乐车载歌词）会把 media.title
+     * 一句句换成歌词，所以标题栏不能用它；这里给的是固定的歌名，
+     * 认不出来时为空（界面显示「未知歌名」），不再跟着歌词一起变。
+     */
+    val songTitle: String = "",
 ) {
     val lineCount: Int get() = lines.size
     val hasLyrics: Boolean get() = lines.isNotEmpty()
@@ -269,6 +300,21 @@ fun songNameFromTitleArtistLine(value: String): String? {
         val rest = trimmed.substring(index + separator.length).trim()
         if (name.isEmpty() || rest.isEmpty()) continue
         return name
+    }
+    return null
+}
+
+/** 从 `歌曲名 - 歌手` 里切出歌手名；切不出来返回 null。 */
+fun artistFromTitleArtistLine(value: String): String? {
+    val trimmed = value.trim()
+    if (trimmed.isEmpty()) return null
+    for (separator in listOf(" - ", " – ", " — ")) {
+        val index = trimmed.indexOf(separator)
+        if (index <= 0) continue
+        val name = trimmed.substring(0, index).trim()
+        val rest = trimmed.substring(index + separator.length).trim()
+        if (name.isEmpty() || rest.isEmpty()) continue
+        return rest
     }
     return null
 }

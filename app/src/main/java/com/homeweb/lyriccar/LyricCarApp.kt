@@ -15,6 +15,7 @@ import com.homeweb.lyriccar.model.LyricDisplay
 import com.homeweb.lyriccar.model.LyricFieldPreference
 import com.homeweb.lyriccar.model.LyricSessionState
 import com.homeweb.lyriccar.model.MediaInfo
+import com.homeweb.lyriccar.model.PanelTone
 import com.homeweb.lyriccar.model.ThemeMode
 import java.io.File
 import kotlin.math.abs
@@ -40,6 +41,17 @@ class LyricCarApp : Application() {
     lateinit var repository: MediaSourceCoordinator
         private set
 
+    /** 本次启动清掉了几首「没采到东西」的记录（歌词库面板会提一句）。 */
+    var lastPruneCount: Int = 0
+        private set
+
+    /** 读一次就归零：这条提示只在打开歌词库时提一句。 */
+    fun consumePruneCount(): Int {
+        val value = lastPruneCount
+        lastPruneCount = 0
+        return value
+    }
+
     private val mainHandler = Handler(Looper.getMainLooper())
     private var lastInfo: MediaInfo? = null
     private var lastState: LyricSessionState = LyricSessionState()
@@ -57,6 +69,7 @@ class LyricCarApp : Application() {
         diagnostics = Diagnostics.install(this)
         settings = AppSettings.load(directory)
         store = LyricStore.open(directory)
+        pruneWeakEntries()
         engine = LyricCaptureEngine(
             sink = store,
             field = settings.field,
@@ -167,15 +180,45 @@ class LyricCarApp : Application() {
     /** 自定义背景图片存在这里的私有目录，不申请存储权限。 */
     fun backgroundImageFile(): File = File(directory, BACKGROUND_IMAGE_NAME)
 
+    /** 图片背景时左栏的底色：半透明 / 透明。 */
+    fun setPanelTone(tone: PanelTone) {
+        val background = settings.background
+        if (background.panel == tone) return
+        settings = settings.copy(background = background.copy(panel = tone))
+        settings.save(directory)
+        diagnostics.log("[LyricCar] 设置：左栏底色=${tone.label}")
+        settingsListener?.invoke(settings)
+    }
+
     /** 恢复默认背景，并删掉已经保存的图片。 */
     fun resetBackground() {
         val file = backgroundImageFile()
         if (file.exists()) file.delete()
-        setBackground(BackgroundStyle())
+        // 左栏底色是显示偏好，不是背景本身，留着。
+        setBackground(BackgroundStyle(panel = settings.background.panel))
     }
 
     fun notifyState() {
         mainHandler.post { stateListener?.invoke(lastState) }
+    }
+
+    /** 启动时清一遍歌词库：听了几秒就跳走的歌不必留着。 */
+    private fun pruneWeakEntries() {
+        val removed = try {
+            store.pruneWeakEntries()
+        } catch (error: Exception) {
+            diagnostics.log("[LyricCar] 歌词库清理失败：$error")
+            return
+        }
+        lastPruneCount = removed.size
+        if (removed.isEmpty()) return
+        removed.forEach { song ->
+            diagnostics.log(
+                "[LyricCar] 歌词库清理：《${song.displayName}》" +
+                    "${song.lines.size} 句 / 覆盖 ${song.spanMs / 1000} 秒 —— 太短，删掉",
+            )
+        }
+        diagnostics.log("[LyricCar] 歌词库清理：共删掉 ${removed.size} 首")
     }
 
     companion object {

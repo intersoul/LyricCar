@@ -401,16 +401,23 @@ class LyricCaptureEngine(
         lastTitle = ""
         primedTitle = titleRowMode
 
+        startedFromStart = info.positionMs <= FROM_START_TOLERANCE_MS
+        startUndecided = songChange && !startedFromStart
+
         realSongName = realNameOf(info)
-        pendingTitleName = if (titleRowMode && realSongName.isEmpty()) info.title.trim() else ""
+        // 只有「从头开始放」时，标题行上此刻那一句才可能是歌名 —— 半截插进来的歌，
+        // 这一句多半是歌词，记成歌名会把左栏标题固定成一句歌词，丢掉。
+        pendingTitleName =
+            if (titleRowMode && realSongName.isEmpty() && startedFromStart) {
+                info.title.trim()
+            } else {
+                ""
+            }
         nameMatched = false
         nameMatchConfirmed = false
         nameConflicts = 0
         currentLyricText = ""
         textIndex = null
-
-        startedFromStart = info.positionMs <= FROM_START_TOLERANCE_MS
-        startUndecided = songChange && !startedFromStart
 
         minPositionMs = info.positionMs
         maxPositionMs = info.positionMs
@@ -712,6 +719,20 @@ class LyricCaptureEngine(
         textIndex = locateLine(lines, lyric)
     }
 
+    /** 左栏标题栏用的固定歌名（不随歌词变）。 */
+    private fun stableTitle(info: MediaInfo): String {
+        // 歌名优先：库里存的、歌手行里「歌名 - 歌手」切出来的。
+        // 蓝牙车机歌词这类播放器把歌词写进歌曲名行，media.title 每一句都在变，
+        // 只有这两个才是固定的歌名。
+        val stored = song?.songName?.trim().orEmpty()
+        if (stored.isNotEmpty()) return stored
+        if (realSongName.isNotBlank()) return realSongName.trim()
+        // 歌词写在歌手 / 专辑行的播放器：标题行本来就是歌名，直接用。
+        if (!titleRowMode) return info.title.trim()
+        // pendingTitleName 只在从头开始放的时候才会记下（半截插进来的不算）。
+        return pendingTitleName.trim()
+    }
+
     private fun lyricTextOf(info: MediaInfo): String {
         if (titleRowMode) {
             val title = info.title.trim()
@@ -770,6 +791,7 @@ class LyricCaptureEngine(
             derivedPositionMs = derived,
             playingNow = info.playing || now - lyricSeenAtMs <= aliveWindowMs,
             positionStale = stalled,
+            songTitle = stableTitle(info),
         )
     }
 

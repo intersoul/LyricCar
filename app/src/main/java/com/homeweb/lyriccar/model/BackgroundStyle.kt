@@ -37,10 +37,29 @@ enum class BackgroundColorPreset(
     }
 }
 
+/**
+ * 自定义图片背景时，左栏（控制区）要不要铺底色。
+ *
+ * 铺一层半透明底方便在花哨图片上看清文字；透明则整块图直接露出来，
+ * 只留中间那条可拖动的分栏条，画面更干净。
+ */
+enum class PanelTone(val label: String) {
+    TRANSLUCENT("半透明"),
+    TRANSPARENT("透明");
+
+    companion object {
+        /** 默认透明：背景图整块露出来最干净；嫌文字看不清再换半透明。 */
+        fun fromName(name: String?): PanelTone =
+            entries.firstOrNull { it.name.equals(name, ignoreCase = true) } ?: TRANSPARENT
+    }
+}
+
 /** 主界面背景设置：默认 / 自定义图片 / 纯色。 */
 data class BackgroundStyle(
     val mode: BackgroundMode = BackgroundMode.DEFAULT,
     val color: BackgroundColorPreset = BackgroundColorPreset.NIGHT,
     /** 自定义图片存在应用私有目录里的文件名；为空表示还没选过。 */
     val imageName: String = "",
+    /** 图片背景时左栏的底色：半透明 / 透明。别的背景模式下忽略。 */
+    val panel: PanelTone = PanelTone.TRANSPARENT,
 )

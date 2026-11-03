@@ -98,6 +98,22 @@ class LyricStore private constructor(
         scheduleSave(urgent = true)
     }
 
+    /**
+     * 清掉「没采到东西」的记录：不到 5 句，或者歌词只覆盖了不到 10 秒。
+     *
+     * 这些歌多半是列表里滑过去、听了个开头就跳走的，留着只会把歌词库撑大。
+     * 用户自己导入的一律不动。启动时调一次。
+     */
+    @Synchronized
+    fun pruneWeakEntries(): List<StoredSong> {
+        val doomed = songs.values.filter { it.weakForLibrary }
+        if (doomed.isEmpty()) return emptyList()
+        doomed.forEach { songs.remove(it.key) }
+        bump()
+        scheduleSave(urgent = true)
+        return doomed
+    }
+
     /** 全部歌词，按最近更新排序。 */
     @Synchronized
     fun songs(): List<StoredSong> = songs.values.sortedByDescending { it.updatedAtMs }

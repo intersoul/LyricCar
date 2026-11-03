@@ -33,13 +33,17 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.LyricCar">
 
+        <!--
+          不锁横屏：竖着的屏幕、车机「平行世界」里被挤成竖条的窗口都能用，
+          布局会跟着窗口形状换成「上歌词 / 下控制条」。
+          配置变化（转屏、窗口改大小）交给系统重建 Activity —— 歌词库和正在采集的
+          歌词都活在 Application 里，重建不会丢。
+        -->
         <activity
             android:name=".ui.MainActivity"
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:exported="true"
             android:hardwareAccelerated="true"
             android:launchMode="singleTop"
-            android:screenOrientation="sensorLandscape"
             android:taskAffinity=""
             android:theme="@style/Theme.LyricCar"
             android:windowSoftInputMode="adjustResize">

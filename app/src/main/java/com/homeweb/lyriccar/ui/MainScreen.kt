@@ -29,7 +29,11 @@ import com.homeweb.lyriccar.model.BackgroundMode
 import com.homeweb.lyriccar.model.LyricLine
 import com.homeweb.lyriccar.model.LyricMode
 import com.homeweb.lyriccar.model.LyricSessionState
+import com.homeweb.lyriccar.model.PanelTone
 import com.homeweb.lyriccar.model.ThemeMode
+import com.homeweb.lyriccar.model.artistFromTitleArtistLine
+import com.homeweb.lyriccar.model.normalizeTitle
+import com.homeweb.lyriccar.model.songNameFromTitleArtistLine
 import com.homeweb.lyriccar.transfer.DownloadsRepository
 import java.util.Locale
 
@@ -68,7 +72,15 @@ class MainScreen(
     private var lastArtUri = ""
     private var lastArtBytes: ByteArray? = null
 
-    private val compact = resources.configuration.screenWidthDp < 640
+    /**
+     * 窗口是竖着的（屏幕竖屏，或者车机「平行世界」里 App 被挤成竖条）。
+     *
+     * 这种情况按网易云歌词那种排法：上边整块歌词，下边一条控制区，
+     * 封面不再显示 —— 竖着的地方本来就窄，封面一放标题和歌名就没地方了。
+     */
+    private val portrait =
+        resources.configuration.screenHeightDp > resources.configuration.screenWidthDp
+    private val coverFrame: FrameLayout
     private val leftPanel: LinearLayout
     private val rightPanel: FrameLayout
     private val splitHandle: SplitHandle
@@ -78,7 +90,7 @@ class MainScreen(
 
     init {
         setBackgroundColor(Palette.BACKGROUND)
-        orientation = if (compact) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
+        orientation = if (portrait) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
 
         // ------------------------------------------------------
         // 左面板
@@ -90,7 +102,11 @@ class MainScreen(
         val leftScroll = ScrollView(activity).apply { isFillViewport = true }
         val leftColumn = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPaddingDp(28, 28, 28, 28)
+            if (portrait) {
+                setPaddingDp(20, 18, 20, 16)
+            } else {
+                setPaddingDp(28, 28, 28, 28)
+            }
         }
         leftScroll.addView(
             leftColumn,
@@ -102,7 +118,7 @@ class MainScreen(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.TOP
         }
-        val coverFrame = FrameLayout(activity).apply {
+        coverFrame = FrameLayout(activity).apply {
             background = roundedBackground(Palette.SURFACE, 16)
             addView(
                 coverPlaceholder,
@@ -115,16 +131,23 @@ class MainScreen(
             coverFrame,
             LinearLayout.LayoutParams(activity.dp(132), activity.dp(132)),
         )
+        if (portrait) coverFrame.visibility = View.GONE
 
         val textColumn = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
         }
-        titleText = textView(activity, "未在播放", 24, Palette.TEXT_PRIMARY, bold = true).apply {
-            // 歌词写在歌曲名行时，这里就是当前这句歌词：允许换行，别再把第二行切掉。
-            maxLines = 4
+        titleText = textView(
+            activity,
+            "未在播放",
+            if (portrait) 21 else 24,
+            Palette.TEXT_PRIMARY,
+            bold = true,
+        ).apply {
+            // 标题栏显示的是歌名（不是歌词），所以正常只有一两行；长歌名给到 2/4 行。
+            maxLines = if (portrait) 2 else 4
             ellipsize = TextUtils.TruncateAt.END
             setLineSpacing(0f, 1.25f)
-            minHeight = activity.dp(60)
+            minHeight = activity.dp(if (portrait) 26 else 60)
         }
         artistText = textView(activity, "歌手：—", 15, Palette.TEXT_SECONDARY).apply {
             maxLines = 1
@@ -133,6 +156,7 @@ class MainScreen(
         albumText = textView(activity, "专辑：—", 15, Palette.TEXT_SECONDARY).apply {
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
+            if (portrait) visibility = View.GONE
         }
         sourceChip = textView(activity, "", 13, Palette.ACCENT).apply {
             maxLines = 1
@@ -167,15 +191,24 @@ class MainScreen(
             textColumn,
             LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f),
         )
-        leftColumn.addView(topRow, matchWidthWrap())
-
-        leftColumn.addView(space(activity, 26))
         // 进度条以下的控件钉在底部：左边标题一句长一句短时，下面整排控件不再跟着上下跳。
         // ScrollView 开了 fillViewport，内容没超过一屏时这个占位会把下面的内容顶到底。
-        leftColumn.addView(
-            View(activity),
-            LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f),
-        )
+        // 竖屏时整块都贴底（歌名 + 进度 + 控制键），空出来的地方留在歌词下边。
+        if (portrait) {
+            leftColumn.addView(
+                View(activity),
+                LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f),
+            )
+        }
+        leftColumn.addView(topRow, matchWidthWrap())
+
+        leftColumn.addView(space(activity, if (portrait) 12 else 26))
+        if (!portrait) {
+            leftColumn.addView(
+                View(activity),
+                LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f),
+            )
+        }
 
         // 进度条 + 时间
         val progressColumn = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
@@ -230,15 +263,17 @@ class MainScreen(
         controls.addView(nextButton, LinearLayout.LayoutParams(activity.dp(52), activity.dp(52)))
         leftColumn.addView(controls, matchWidthWrap())
 
-        leftColumn.addView(space(activity, 18))
+        leftColumn.addView(space(activity, if (portrait) 10 else 18))
 
         statusText = textView(activity, "歌词库：0 首", 15, Palette.TEXT_SECONDARY).apply {
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
+            // 竖屏下控制区就一条，先把「歌词库：N 首」让出来。
+            if (portrait) visibility = View.GONE
         }
         leftColumn.addView(statusText, matchWidthWrap())
 
-        leftColumn.addView(space(activity, 18))
+        leftColumn.addView(space(activity, if (portrait) 10 else 18))
 
         val buttonRow = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -330,12 +365,15 @@ class MainScreen(
 
         // ------------------------------------------------------
         // 组合：中间是可拖动的分栏条，比例存设置里
+        //   横屏：左控制栏 │ 竖条 │ 歌词
+        //   竖屏：上歌词   │ 横条 │ 下控制栏
+        // splitFraction 始终表示「控制区」那一栏占的比例（横屏是左边，竖屏是下边）。
         // ------------------------------------------------------
         splitFraction = AppSettings.sanitizeSplitRatio(app.settings.splitRatio)
-        splitHandle = SplitHandle(activity, vertical = compact).apply {
-            onFraction = { fraction -> applySplit(fraction) }
+        splitHandle = SplitHandle(activity, vertical = portrait).apply {
+            onFraction = { fraction -> applySplit(controlShareOf(fraction)) }
             onRelease = { fraction ->
-                applySplit(fraction)
+                applySplit(controlShareOf(fraction))
                 app.setSplitRatio(splitFraction)
             }
             onReset = {
@@ -344,18 +382,18 @@ class MainScreen(
                 toast(activity, "分栏已恢复默认")
             }
         }
-        if (compact) {
+        if (portrait) {
             addView(
-                leftPanel,
-                LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, splitFraction),
+                rightPanel,
+                LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f - splitFraction),
             )
             addView(
                 splitHandle,
                 LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, activity.dp(HANDLE_DP)),
             )
             addView(
-                rightPanel,
-                LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f - splitFraction),
+                leftPanel,
+                LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, splitFraction),
             )
         } else {
             addView(
@@ -371,6 +409,8 @@ class MainScreen(
                 LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f - splitFraction),
             )
         }
+        // 从横屏切过来的比例可能不适合竖屏（竖屏只有 20%~60% 可用），先按新方向收一次。
+        applySplit(splitFraction)
 
         seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(bar: SeekBar?, progress: Int, fromUser: Boolean) {
@@ -406,7 +446,12 @@ class MainScreen(
         lyricsView.applyStyle(lyricStyleOf(app.settings.lyric))
     }
 
-    /** 主界面背景：默认 / 纯色 / 自定义图片（图片会带一层主题遮罩，保证歌词看得清）。 */
+    /**
+     * 主界面背景：默认 / 纯色 / 自定义图片。
+     *
+     * 图片会带一层主题遮罩，保证歌词看得清；左栏（控制区）铺不铺底由
+     * 「背景 → 左栏底色」决定 —— 铺半透明看得清，透明就是整块图露出来。
+     */
     fun applyBackground() {
         when (app.settings.background.mode) {
             BackgroundMode.DEFAULT -> {
@@ -451,11 +496,26 @@ class MainScreen(
                         ),
                     )
                     setBackground(LayerDrawable(arrayOf(image, scrim)))
-                    leftPanel.background = leftPanelBackground(alpha = 200)
+                    // 左栏铺不铺底：透明时整块图直接露出来，只剩中间那条分栏条。
+                    leftPanel.background =
+                        if (app.settings.background.panel == PanelTone.TRANSPARENT) {
+                            null
+                        } else {
+                            leftPanelBackground(alpha = 200)
+                        }
                     rightPanel.setBackgroundColor(Color.TRANSPARENT)
                 }
             }
         }
+        applyCoverFrameBackground()
+    }
+
+    /** 左栏整块透明时，封面的占位方块也别留一块底色。 */
+    private fun applyCoverFrameBackground() {
+        val background = app.settings.background
+        val clear = background.mode == BackgroundMode.IMAGE &&
+            background.panel == PanelTone.TRANSPARENT
+        coverFrame.background = if (clear) null else roundedBackground(Palette.SURFACE, 16)
     }
 
     private fun dropBackgroundBitmap() {
@@ -497,14 +557,18 @@ class MainScreen(
         lastState = state
         val media = state.media
 
-        val title = media.title.ifBlank { "未在播放" }
+        val title = state.songTitle.trim().ifEmpty {
+            // 认不出歌名（半截插进来、播放器又把歌词写进了歌曲名行）就别拿歌词顶上，
+            // 否则标题栏会跟着歌词一句句跳。
+            if (state.mode == LyricMode.IDLE) "未在播放" else "未知歌名"
+        }
         if (titleText.text.toString() != title) titleText.text = title
-        val artist = "歌手：${media.artist.ifBlank { "—" }}"
+        val artist = "歌手：${artistLabel(state)}"
         if (artistText.text.toString() != artist) artistText.text = artist
         val album = "专辑：${media.album.ifBlank { "—" }}"
         if (albumText.text.toString() != album) albumText.text = album
 
-        if (media.appLabel.isNotEmpty()) {
+        if (!portrait && media.appLabel.isNotEmpty()) {
             val source = "来自 ${media.appLabel}"
             if (sourceChip.text.toString() != source) sourceChip.text = source
             sourceChip.visibility = View.VISIBLE
@@ -535,14 +599,16 @@ class MainScreen(
         playButton.alpha = if (media.hasTrack) 1f else 0.35f
         nextButton.alpha = if (media.hasTrack) 1f else 0.35f
 
+        // 首数放最前：左栏窄的时候后面的字会被省略掉，首数要保证看得见。
+        val stored = "歌词库：${state.storedCount} 首"
         val status = when (state.mode) {
-            LyricMode.IDLE -> "歌词库：${state.storedCount} 首"
-            LyricMode.CAPTURING -> "采集歌词中 · 歌词库：${state.storedCount} 首"
+            LyricMode.IDLE -> stored
+            LyricMode.CAPTURING -> "$stored · 正在采集"
             LyricMode.REPLAY ->
                 if (state.collecting) {
-                    "回放中（还在补没采到的部分） · 歌词库：${state.storedCount} 首"
+                    "$stored · 回放中（还在补没采到的部分）"
                 } else {
-                    "歌词回放中 · 歌词库：${state.storedCount} 首"
+                    "$stored · 回放中"
                 }
         }
         if (statusText.text.toString() != status) statusText.text = status
@@ -564,6 +630,17 @@ class MainScreen(
             waitingText.visibility =
                 if (state.mode == LyricMode.CAPTURING && state.lines.isEmpty()) View.VISIBLE else View.GONE
         }
+    }
+
+    /** 「歌手：」那一行。网易云这类把「歌名 - 歌手」写在歌手行时，只留歌手名。 */
+    private fun artistLabel(state: LyricSessionState): String {
+        val raw = state.media.artist.trim()
+        if (raw.isEmpty()) return "—"
+        val name = state.songTitle.trim()
+        if (name.isEmpty()) return raw
+        val parsedName = songNameFromTitleArtistLine(raw) ?: return raw
+        if (normalizeTitle(parsedName) != normalizeTitle(name)) return raw
+        return artistFromTitleArtistLine(raw) ?: raw
     }
 
     private fun applyBanner(state: LyricSessionState) {
@@ -814,12 +891,12 @@ class MainScreen(
     }
 
     /**
-     * 应用左右 / 上下分栏比例。比例是「左（上）栏占可用空间的比例」，
-     * 太窄时按最小宽度兜底，避免把某一边挤没。
+     * 应用左右 / 上下分栏比例。[fraction] 是「控制区」那一栏的占比：
+     * 横屏是左边那一栏，竖屏是下边那一条。
      */
     private fun applySplit(fraction: Float) {
         splitFraction = clampFraction(fraction)
-        if (compact) {
+        if (portrait) {
             leftPanel.layoutParams = LinearLayout.LayoutParams(
                 LayoutParams.MATCH_PARENT,
                 0,
@@ -844,9 +921,28 @@ class MainScreen(
         }
     }
 
+    /** 分栏条拖出来的比例是「上 / 左那一栏」的占比，竖屏时上边是歌词，要反过来。 */
+    private fun controlShareOf(handleFraction: Float): Float =
+        if (portrait) 1f - handleFraction else handleFraction
+
+    /** 竖屏时控制区（下边）的可用高度，单位 dp。还没布局时按整屏估。 */
+    private fun usableHeightDp(): Float {
+        val usablePx = height - paddingTop - paddingBottom - splitHandle.height
+        if (usablePx <= 0) return resources.configuration.screenHeightDp.toFloat()
+        return usablePx / resources.displayMetrics.density
+    }
+
     private fun clampFraction(fraction: Float): Float {
         val raw = fraction.coerceIn(AppSettings.MIN_SPLIT_RATIO, AppSettings.MAX_SPLIT_RATIO)
-        if (compact) return raw.coerceIn(COMPACT_MIN_FRACTION, COMPACT_MAX_FRACTION)
+        if (portrait) {
+            val usable = usableHeightDp()
+            if (usable <= 0f) return raw
+            val minControls = MIN_CONTROLS_DP / usable
+            val maxControls = 1f - MIN_LYRICS_DP / usable
+            // 窗口太矮、两个下限加起来超过整屏：退化成固定区间。
+            if (minControls >= maxControls) return raw.coerceIn(0.32f, 0.62f)
+            return raw.coerceIn(minControls.coerceAtLeast(0.16f), maxControls.coerceAtMost(0.84f))
+        }
         val handle = splitHandle.width
         val usable = width - paddingLeft - paddingRight - handle
         if (usable <= 0 || handle <= 0) return raw
@@ -871,7 +967,8 @@ class MainScreen(
         const val HANDLE_DP = 18
         const val MIN_LEFT_DP = 280
         const val MIN_RIGHT_DP = 300
-        const val COMPACT_MIN_FRACTION = 0.35f
-        const val COMPACT_MAX_FRACTION = 0.65f
+        /** 竖屏时分栏条上下两边的最小高度：下边控制区、上边歌词区。 */
+        const val MIN_CONTROLS_DP = 250
+        const val MIN_LYRICS_DP = 190
     }
 }

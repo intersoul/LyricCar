@@ -15,7 +15,6 @@ import com.homeweb.lyriccar.LyricCarApp
 import com.homeweb.lyriccar.data.AppSettings
 import com.homeweb.lyriccar.data.Diagnostics
 import com.homeweb.lyriccar.model.BackgroundMode
-import com.homeweb.lyriccar.model.BackgroundStyle
 import com.homeweb.lyriccar.model.LyricSessionState
 import com.homeweb.lyriccar.model.ThemeMode
 import com.homeweb.lyriccar.transfer.DownloadsRepository
@@ -179,9 +178,9 @@ class MainActivity : Activity() {
             val saved = BackgroundImages.save(this, cropped, BackgroundImages.targetWidth(this))
             if (saved) {
                 app.setBackground(
-                    BackgroundStyle(
+                    // 保留用户选的左栏底色 / 纯色档位，只把模式换成图片。
+                    app.settings.background.copy(
                         mode = BackgroundMode.IMAGE,
-                        color = app.settings.background.color,
                         imageName = LyricCarApp.BACKGROUND_IMAGE_NAME,
                     ),
                 )

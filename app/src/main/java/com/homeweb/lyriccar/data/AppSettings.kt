@@ -9,6 +9,7 @@ import com.homeweb.lyriccar.model.LyricDisplay
 import com.homeweb.lyriccar.model.LyricFieldPreference
 import com.homeweb.lyriccar.model.LyricFontScale
 import com.homeweb.lyriccar.model.LyricLineSpacing
+import com.homeweb.lyriccar.model.PanelTone
 import com.homeweb.lyriccar.model.ThemeMode
 import org.json.JSONObject
 import java.io.File
@@ -37,6 +38,7 @@ data class AppSettings(
         put("bgMode", background.mode.name.lowercase())
         put("bgColor", background.color.name.lowercase())
         put("bgImage", background.imageName)
+        put("bgPanel", background.panel.name.lowercase())
     }
 
     fun save(directory: File) {
@@ -85,6 +87,7 @@ data class AppSettings(
                         mode = BackgroundMode.fromName(json.optString("bgMode")),
                         color = BackgroundColorPreset.fromName(json.optString("bgColor")),
                         imageName = json.optString("bgImage"),
+                        panel = PanelTone.fromName(json.optString("bgPanel")),
                     ),
                 )
             } catch (error: Exception) {

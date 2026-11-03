@@ -43,6 +43,7 @@ import com.homeweb.lyriccar.model.LyricFieldPreference
 import com.homeweb.lyriccar.model.LyricFontScale
 import com.homeweb.lyriccar.model.LyricLine
 import com.homeweb.lyriccar.model.LyricLineSpacing
+import com.homeweb.lyriccar.model.PanelTone
 import com.homeweb.lyriccar.model.StoredSong
 import com.homeweb.lyriccar.model.ThemeMode
 import com.homeweb.lyriccar.transfer.DownloadedFile
@@ -188,6 +189,21 @@ class LibrarySheet(
         )
         body.addView(space(activity, 12))
 
+        val prunedCount = app.consumePruneCount()
+        if (prunedCount > 0) {
+            body.addView(
+                textView(
+                    activity,
+                    "启动时顺手清掉了 $prunedCount 首太短的记录（不到 5 句，或只覆盖了 10 秒以内）" +
+                        "—— 多半是列表里滑过去、没完整听的歌。",
+                    14,
+                    Palette.TEXT_SECONDARY,
+                ).apply { setLineSpacing(0f, 1.4f) },
+                matchWidthWrap(),
+            )
+            body.addView(space(activity, 10))
+        }
+
         val metrics = activity.resources.displayMetrics
         list = ListView(activity).apply {
             divider = null
@@ -264,7 +280,7 @@ class LibrarySheet(
             String.format(Locale.US, "%.1f s    %s", line.timeMs / 1000.0, line.text)
         }
         AlertDialog.Builder(activity, alertDialogTheme())
-            .setTitle(song.title)
+            .setTitle(song.displayName)
             .setMessage(message)
             .setPositiveButton("关闭", null)
             .show()
@@ -818,6 +834,36 @@ class SettingsSheet(
             },
             matchWidthWrap(),
         )
+
+        backgroundSection.addView(space(activity, 12))
+        backgroundSection.addView(styleLabel("左栏底色（自定义图片时生效）"))
+        backgroundSection.addView(space(activity, 8))
+        backgroundSection.addView(
+            chipRow(
+                PanelTone.entries.map { tone ->
+                    chip(tone.label, bg.panel == tone) {
+                        app.setPanelTone(tone)
+                        fillBackgroundSection()
+                    }
+                },
+            ),
+            matchWidthWrap(),
+        )
+        if (bg.mode == BackgroundMode.IMAGE) {
+            backgroundSection.addView(space(activity, 6))
+            backgroundSection.addView(
+                textView(
+                    activity,
+                    if (bg.panel == PanelTone.TRANSPARENT) {
+                        "左栏整块透明，背景图直接露出来，只留中间那条可拖动的分栏条。"
+                    } else {
+                        "左栏铺一层半透明底，图片再花也看得清文字；嫌不好看就换「透明」。"
+                    },
+                    13,
+                    Palette.TEXT_SECONDARY,
+                ),
+            )
+        }
 
         backgroundSection.addView(space(activity, 12))
         backgroundSection.addView(styleLabel("纯色"))
