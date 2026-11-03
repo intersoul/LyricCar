@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  LyricCar 歌词 —— 车机端歌词显示 App（纯 Android 原生实现）。
+
+  * 歌曲信息来自系统媒体会话（MediaSession），需要「通知使用权」而不是普通权限；
+  * 歌词本体存在应用私有目录（<files>/carlyric/lyrics.json），不需要权限；
+  * 导出 / 导入写系统「下载」目录：Android 9 及以下需要
+    WRITE_EXTERNAL_STORAGE，Android 10 起走 MediaStore，不需要权限；
+  * 局域网传输由 App 自己起一个 HTTP 服务，所以需要 INTERNET。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- 读取蓝牙 A2DP Sink 的 MediaBrowserService（Android 11+ 的包可见性声明）。 -->
+    <queries>
+        <package android:name="com.android.bluetooth" />
+    </queries>
+
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
+    <application
+        android:name=".LyricCarApp"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.LyricCar">
+
+        <activity
+            android:name=".ui.MainActivity"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:exported="true"
+            android:hardwareAccelerated="true"
+            android:launchMode="singleTop"
+            android:screenOrientation="sensorLandscape"
+            android:taskAffinity=""
+            android:theme="@style/Theme.LyricCar"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          一行通知都不处理，只是用来拿到读取其他 App MediaSession 的「钥匙」。
+          Android 规定：只有已启用的 NotificationListenerService 才能通过
+          MediaSessionManager.getActiveSessions() 读到别的播放器的元数据。
+        -->
+        <service
+            android:name=".MediaSessionListenerService"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+    </application>
+
+</manifest>
