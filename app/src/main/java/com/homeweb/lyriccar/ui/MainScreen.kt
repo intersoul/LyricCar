@@ -379,8 +379,14 @@ class MainScreen(
         })
 
         applyInsets()
+        applyLyricDisplay()
         render(lastState)
         refreshNotificationAccess()
+    }
+
+    /** 设置里的歌词样式变了：立刻套到正在显示的歌词上，不重建界面。 */
+    fun applyLyricDisplay() {
+        lyricsView.applyStyle(lyricStyleOf(app.settings.lyric))
     }
 
     private fun mediaButton(iconRes: Int, sizeDp: Int, onClick: () -> Unit): ImageButton =

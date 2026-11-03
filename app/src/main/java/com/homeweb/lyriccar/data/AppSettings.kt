@@ -1,6 +1,11 @@
 package com.homeweb.lyriccar.data
 
+import com.homeweb.lyriccar.model.LyricAlignment
+import com.homeweb.lyriccar.model.LyricColorPreset
+import com.homeweb.lyriccar.model.LyricDisplay
 import com.homeweb.lyriccar.model.LyricFieldPreference
+import com.homeweb.lyriccar.model.LyricFontScale
+import com.homeweb.lyriccar.model.LyricLineSpacing
 import com.homeweb.lyriccar.model.ThemeMode
 import org.json.JSONObject
 import java.io.File
@@ -12,12 +17,18 @@ data class AppSettings(
     val theme: ThemeMode = ThemeMode.DARK,
     /** 左栏占宽比例（0~1），拖动分栏时更新。 */
     val splitRatio: Float = DEFAULT_SPLIT_RATIO,
+    /** 歌词显示样式：字号 / 行距 / 对齐 / 当前句颜色。 */
+    val lyric: LyricDisplay = LyricDisplay(),
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("field", field.name.lowercase())
         put("keepScreenOn", keepScreenOn)
         put("theme", theme.name.lowercase())
         put("splitRatio", splitRatio.toDouble())
+        put("lyricFont", lyric.font.name.lowercase())
+        put("lyricSpacing", lyric.spacing.name.lowercase())
+        put("lyricAlign", lyric.alignment.name.lowercase())
+        put("lyricColor", lyric.color.name.lowercase())
     }
 
     fun save(directory: File) {
@@ -55,6 +66,12 @@ data class AppSettings(
                     theme = ThemeMode.fromName(json.optString("theme")),
                     splitRatio = sanitizeSplitRatio(
                         json.optDouble("splitRatio", DEFAULT_SPLIT_RATIO.toDouble()).toFloat(),
+                    ),
+                    lyric = LyricDisplay(
+                        font = LyricFontScale.fromName(json.optString("lyricFont")),
+                        spacing = LyricLineSpacing.fromName(json.optString("lyricSpacing")),
+                        alignment = LyricAlignment.fromName(json.optString("lyricAlign")),
+                        color = LyricColorPreset.fromName(json.optString("lyricColor")),
                     ),
                 )
             } catch (error: Exception) {

@@ -54,6 +54,7 @@
 - 导出到系统「下载」目录；从下载目录导入；局域网 HTTP 传输（下载 / 上传 / 诊断日志）。
 - 诊断日志：自动落盘、256 KB 滚动、环境自查、导出 / 复制 / 清空 / 手机来取。
 - 设置：歌词写在（自动 / 歌手行 / 专辑行 / 歌曲名行）、界面常亮、深色 / 浅色外观。
+- 歌词样式：字号（小 / 标准 / 大 / 特大）、行距（紧凑 / 标准 / 宽松）、左对齐 / 居中、当前句颜色（主题色 / 暖黄 / 粉 / 绿 / 橙 / 高对比），设置里带真实歌词控件预览，改完立刻生效。
 - 左右分栏可拖动：中间的分割线用手指左右拖就能改两栏宽度，松手即存，双击恢复默认比例。
 - 关于面板：版本号、开发者、GitHub 地址、版权声明，链接可一键打开 / 复制。
 - 横屏全屏；不申请多余权限（Android 10+ 导出不需要存储权限）。
@@ -75,7 +76,8 @@ app/src/main/java/com/homeweb/lyriccar/
 │   ├── BluetoothBrowserSource.kt     连接蓝牙 A2dpMediaBrowserService（无需通知权限）
 │   └── MediaSessionRepository.kt     读 MediaSession、外推位置、封面、播放控制、诊断
 ├── model/
-│   └── Models.kt                     MediaInfo / LyricLine / StoredSong / 歌曲 key
+│   ├── Models.kt                     MediaInfo / LyricLine / StoredSong / 歌曲 key
+│   └── LyricDisplay.kt               歌词样式档位（字号 / 行距 / 对齐 / 颜色）
 ├── transfer/
 │   └── DownloadsRepository.kt        系统「下载」目录导出 / 导入（MediaStore / 旧存储）
 ├── lan/
@@ -83,7 +85,8 @@ app/src/main/java/com/homeweb/lyriccar/
 └── ui/
     ├── MainActivity.kt               横屏全屏宿主 Activity
     ├── MainScreen.kt                 左「正在播放」+ 右歌词的主界面
-    ├── LyricsView.kt                 自绘歌词列表（高亮 / 居中滚动 / 点击跳转）
+    ├── LyricsView.kt                 自绘歌词列表（高亮 / 居中滚动 / 点击跳转 / 样式可调）
+    ├── LyricStyle.kt                 把设置里的样式解析成颜色和倍数
     ├── SplitHandle.kt                可拖动的分栏条（左右 / 上下，双击复位）
     ├── Sheets.kt                     歌词库 / 导入 / 设置 / 关于 / 诊断 / 局域网面板
     └── UiKit.kt                      深色 + 浅色两套配色、dp、圆角背景、按钮等 UI 小工具
@@ -120,16 +123,16 @@ app/src/main/res/                     主题、颜色、应用名、启动图标
 # 本机 Android Studio 自带 JBR（没有单独装 JDK 时）
 export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 
-./gradlew assembleDebug      # app/build/outputs/apk/debug/LyricCar v2.2.0-debug.apk
-./gradlew assembleRelease    # app/build/outputs/apk/release/LyricCar v2.2.0.apk
+./gradlew assembleDebug      # app/build/outputs/apk/debug/LyricCar v2.3.0-debug.apk
+./gradlew assembleRelease    # app/build/outputs/apk/release/LyricCar v2.3.0.apk
 ```
 
 APK 文件名按 `LyricCar v{版本号}` 生成，版本号在 `app/build.gradle.kts` 顶部的 `appVersionName` 里改一处，「关于」面板显示的是同一个值。
 
-本工程没有 native 库，生成的 APK 约 0.8 MB；直接安装 `LyricCar v2.2.0.apk` 即可。文件名带空格，命令行安装要加引号：
+本工程没有 native 库，生成的 APK 约 0.8 MB；直接安装 `LyricCar v2.3.0.apk` 即可。文件名带空格，命令行安装要加引号：
 
 ```bash
-adb install -r "app/build/outputs/apk/release/LyricCar v2.2.0.apk"
+adb install -r "app/build/outputs/apk/release/LyricCar v2.3.0.apk"
 ```
 
 发布签名口令放在 `app/key.properties`（已被 `.gitignore` 排除，模板见 `app/key.properties.example`）。没配这个文件时 release 会退回 debug 签名，只够本地跑通构建，**不要**拿那种包当正式包。
@@ -150,6 +153,7 @@ adb install -r "app/build/outputs/apk/release/LyricCar v2.2.0.apk"
 6. 想换车机 / 备份时，进「歌词库」用「导出到下载」或「局域网传输」。
 7. 左右两栏中间那条线可以直接手指左右拖动，改两栏宽度；松手自动记住，双击那条线恢复默认 40%。
 8. 白天屏幕反光看不清，去「设置 → 外观」切成「浅色」；想换回来切「深色」即可，设置会记住。
+9. 歌词字太小 / 想居中 / 想换个颜色，去「设置 → 歌词样式」：字号、行距、左对齐 / 居中、当前句颜色都能调，面板里就是用真实歌词控件做的预览，改完立刻生效。
 
 如果一直采不到歌词，去「设置 → 歌词写在」把手动档切成「专辑行 / 歌手行 / 歌曲名行」试试 —— 左侧面板把三行原始内容显示出来，就是给这个排查用的。
 
@@ -239,7 +243,7 @@ App 里所有 `[LyricCar]` 日志同时进 logcat 和 `diagnostics.log`。启动
 
 ```
 ──── 环境自查 ────
-App 版本 2.2.0
+App 版本 2.3.0
 ✓ 通知使用权：已授予
 监听组件：com.homeweb.lyriccar/com.homeweb.lyriccar.MediaSessionListenerService
 ──── 系统与会话 ────

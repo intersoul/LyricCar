@@ -33,7 +33,13 @@ import com.homeweb.lyriccar.BuildConfig
 import com.homeweb.lyriccar.LyricCarApp
 import com.homeweb.lyriccar.R
 import com.homeweb.lyriccar.lan.LyricLanServer
+import com.homeweb.lyriccar.model.LyricAlignment
+import com.homeweb.lyriccar.model.LyricColorPreset
+import com.homeweb.lyriccar.model.LyricDisplay
 import com.homeweb.lyriccar.model.LyricFieldPreference
+import com.homeweb.lyriccar.model.LyricFontScale
+import com.homeweb.lyriccar.model.LyricLine
+import com.homeweb.lyriccar.model.LyricLineSpacing
 import com.homeweb.lyriccar.model.StoredSong
 import com.homeweb.lyriccar.model.ThemeMode
 import com.homeweb.lyriccar.transfer.DownloadedFile
@@ -511,6 +517,7 @@ class SettingsSheet(
     private val downloads: DownloadsRepository,
 ) {
     private val sheet = SheetDialog(activity, "设置")
+    private lateinit var styleSection: LinearLayout
 
     fun show() {
         rebuild()
@@ -623,6 +630,13 @@ class SettingsSheet(
         )
 
         body.addView(space(activity, 22))
+        body.addView(textView(activity, "歌词样式", 18, Palette.TEXT_SECONDARY))
+        body.addView(space(activity, 10))
+        styleSection = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+        body.addView(styleSection, matchWidthWrap())
+        fillStyleSection()
+
+        body.addView(space(activity, 22))
 
         val switchRow = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -676,8 +690,168 @@ class SettingsSheet(
         body.addView(diagnosticsRow, matchWidthWrap())
     }
 
+    // ------------------------------------------------------
+    // 歌词样式
+    // ------------------------------------------------------
+    private fun fillStyleSection() {
+        val display = app.settings.lyric
+        styleSection.removeAllViews()
+
+        styleSection.addView(stylePreview(display), matchWidthWrap())
+        styleSection.addView(space(activity, 14))
+
+        styleSection.addView(styleLabel("字号"))
+        styleSection.addView(space(activity, 8))
+        styleSection.addView(
+            chipRow(
+                LyricFontScale.entries.map { font ->
+                    chip(font.label, display.font == font) {
+                        pick(display.copy(font = font))
+                    }
+                },
+            ),
+            matchWidthWrap(),
+        )
+
+        styleSection.addView(space(activity, 12))
+        styleSection.addView(styleLabel("行距"))
+        styleSection.addView(space(activity, 8))
+        styleSection.addView(
+            chipRow(
+                LyricLineSpacing.entries.map { spacing ->
+                    chip(spacing.label, display.spacing == spacing) {
+                        pick(display.copy(spacing = spacing))
+                    }
+                },
+            ),
+            matchWidthWrap(),
+        )
+
+        styleSection.addView(space(activity, 12))
+        styleSection.addView(styleLabel("对齐"))
+        styleSection.addView(space(activity, 8))
+        styleSection.addView(
+            chipRow(
+                LyricAlignment.entries.map { alignment ->
+                    chip(alignment.label, display.alignment == alignment) {
+                        pick(display.copy(alignment = alignment))
+                    }
+                },
+            ),
+            matchWidthWrap(),
+        )
+
+        styleSection.addView(space(activity, 12))
+        styleSection.addView(styleLabel("当前句颜色"))
+        styleSection.addView(space(activity, 8))
+        styleSection.addView(colorRow(display), matchWidthWrap())
+        styleSection.addView(space(activity, 6))
+        styleSection.addView(
+            textView(
+                activity,
+                "颜色只作用于正在唱的那一句 · 当前：${display.color.label}",
+                13,
+                Palette.TEXT_SECONDARY,
+            ),
+        )
+    }
+
+    /** 改一项就重画这一小段，不重建整个面板，滚动位置不会跳。 */
+    private fun pick(display: LyricDisplay) {
+        app.setLyricDisplay(display)
+        fillStyleSection()
+    }
+
+    /** 用真正的歌词控件做预览：字号 / 行距 / 对齐 / 颜色都是真实效果。 */
+    private fun stylePreview(display: LyricDisplay): View {
+        val preview = LyricsView(activity).apply {
+            interactive = false
+            applyStyle(lyricStyleOf(display))
+            setLines(PREVIEW_LINES, PREVIEW_CURRENT)
+        }
+        return FrameLayout(activity).apply {
+            background = roundedBackground(Palette.SURFACE_LIGHT, 12)
+            addView(preview, LayoutParams.MATCH_PARENT, activity.dp(PREVIEW_HEIGHT_DP))
+        }
+    }
+
+    private fun styleLabel(text: String): TextView =
+        textView(activity, text, 14, Palette.TEXT_SECONDARY)
+
+    private fun chip(label: String, selected: Boolean, onClick: () -> Unit): TextView =
+        textView(
+            activity,
+            label,
+            15,
+            if (selected) Palette.DARK_TEXT else Palette.TEXT_PRIMARY,
+        ).apply {
+            background = roundedBackground(
+                if (selected) Palette.ACCENT else Palette.SURFACE_LIGHT,
+                999,
+            )
+            setPaddingDp(16, 8, 16, 8)
+            isClickable = true
+            setOnClickListener { onClick() }
+        }
+
+    private fun chipRow(chips: List<TextView>): LinearLayout {
+        val row = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
+        chips.forEachIndexed { index, view ->
+            row.addView(view)
+            if (index != chips.lastIndex) {
+                row.addView(space(activity, 0).apply {
+                    layoutParams = LinearLayout.LayoutParams(activity.dp(8), 1)
+                })
+            }
+        }
+        return row
+    }
+
+    private fun colorRow(display: LyricDisplay): LinearLayout {
+        val lightTheme = Palette.mode == ThemeMode.LIGHT
+        val row = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        LyricColorPreset.entries.forEach { preset ->
+            val selected = display.color == preset
+            val color = if (preset == LyricColorPreset.THEME) {
+                Palette.ACCENT
+            } else {
+                preset.colorFor(lightTheme)
+            }
+            val swatch = View(activity).apply {
+                background = roundedBackground(
+                    color,
+                    999,
+                    if (selected) Palette.TEXT_PRIMARY else Color.TRANSPARENT,
+                    if (selected) 2 else 1,
+                )
+                layoutParams = LinearLayout.LayoutParams(activity.dp(40), activity.dp(40))
+                contentDescription = preset.label
+                isClickable = true
+                setOnClickListener { pick(display.copy(color = preset)) }
+            }
+            row.addView(swatch)
+            row.addView(space(activity, 0).apply {
+                layoutParams = LinearLayout.LayoutParams(activity.dp(10), 1)
+            })
+        }
+        return row
+    }
+
     private fun withAlpha(color: Int, alpha: Int): Int =
         Color.argb(alpha, Color.red(color), Color.green(color), Color.blue(color))
+
+    private companion object {
+        const val PREVIEW_HEIGHT_DP = 176
+        const val PREVIEW_CURRENT = 1
+        val PREVIEW_LINES = listOf(
+            LyricLine(0, "这一句已经唱过"),
+            LyricLine(1_000, "这一句正在唱"),
+            LyricLine(2_000, "这一句还没唱"),
+        )
+    }
 }
 
 // ==================================================================

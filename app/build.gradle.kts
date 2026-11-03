@@ -19,9 +19,9 @@ if (hasReleaseKey) {
 }
 
 // ── 版本号 ─────────────────────────────────────────────
-// 只在这里定义一次：APK 文件名（LyricCar v2.2.0.apk）和「关于」面板都读它。
-val appVersionCode = 6
-val appVersionName = "2.2.0"
+// 只在这里定义一次：APK 文件名（LyricCar v2.3.0.apk）和「关于」面板都读它。
+val appVersionCode = 7
+val appVersionName = "2.3.0"
 
 android {
     namespace = "com.homeweb.lyriccar"
@@ -83,8 +83,8 @@ kotlin {
 }
 
 // APK 文件名按模板 `LyricCar v{版本号}.apk`：
-//   release → LyricCar v2.2.0.apk
-//   debug   → LyricCar v2.2.0-debug.apk
+//   release → LyricCar v2.3.0.apk
+//   debug   → LyricCar v2.3.0-debug.apk
 // 文件名里的版本号和「关于」面板读的是同一个 appVersionName。
 androidComponents {
     onVariants(selector().all()) { variant ->

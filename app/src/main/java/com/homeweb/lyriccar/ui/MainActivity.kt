@@ -24,6 +24,7 @@ class MainActivity : Activity() {
     private val stateHandler: (LyricSessionState) -> Unit = { state -> screen.render(state) }
     private val settingsHandler: (AppSettings) -> Unit = {
         applyKeepScreenOn()
+        if (::screen.isInitialized) screen.applyLyricDisplay()
         applyThemeIfNeeded()
     }
 

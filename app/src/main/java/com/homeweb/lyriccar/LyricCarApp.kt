@@ -9,6 +9,7 @@ import com.homeweb.lyriccar.data.Diagnostics
 import com.homeweb.lyriccar.data.LyricStore
 import com.homeweb.lyriccar.data.carlyricDirectory
 import com.homeweb.lyriccar.media.MediaSourceCoordinator
+import com.homeweb.lyriccar.model.LyricDisplay
 import com.homeweb.lyriccar.model.LyricFieldPreference
 import com.homeweb.lyriccar.model.LyricSessionState
 import com.homeweb.lyriccar.model.MediaInfo
@@ -114,6 +115,18 @@ class LyricCarApp : Application() {
         diagnostics.log(
             "[LyricCar] 设置：分栏 ${(previous * 100).toInt()}% → ${(next * 100).toInt()}%",
         )
+    }
+
+    /** 歌词样式变更：立刻应用到正在显示的歌词，不需要重建界面。 */
+    fun setLyricDisplay(display: LyricDisplay) {
+        if (settings.lyric == display) return
+        settings = settings.copy(lyric = display)
+        settings.save(directory)
+        diagnostics.log(
+            "[LyricCar] 设置：歌词样式 字号=${display.font.label} 行距=${display.spacing.label} " +
+                "对齐=${display.alignment.label} 颜色=${display.color.label}",
+        )
+        settingsListener?.invoke(settings)
     }
 
     fun runSelfCheckAsync() {
