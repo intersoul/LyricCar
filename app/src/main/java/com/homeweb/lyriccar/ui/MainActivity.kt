@@ -8,6 +8,7 @@ import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import android.view.View
 import android.view.WindowInsetsController
 import android.view.WindowManager
@@ -17,6 +18,7 @@ import com.homeweb.lyriccar.data.Diagnostics
 import com.homeweb.lyriccar.model.BackgroundMode
 import com.homeweb.lyriccar.model.LyricSessionState
 import com.homeweb.lyriccar.model.ThemeMode
+import com.homeweb.lyriccar.overlay.LyricOverlayService
 import com.homeweb.lyriccar.transfer.DownloadsRepository
 
 /** 唯一界面：横屏全屏歌词。 */
@@ -26,7 +28,11 @@ class MainActivity : Activity() {
     private lateinit var screen: MainScreen
     private lateinit var downloads: DownloadsRepository
 
+    /** 用户被引导去开悬浮窗权限；回来时若已经授权，就把他刚才要的悬浮窗打开。 */
+    private var pendingOverlayEnable = false
+
     private val stateHandler: (LyricSessionState) -> Unit = { state -> screen.render(state) }
+    private val themeHandler: () -> Unit = { applyThemeIfNeeded() }
     private val settingsHandler: (AppSettings) -> Unit = {
         applyKeepScreenOn()
         if (::screen.isInitialized) {
@@ -41,13 +47,14 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         app = application as LyricCarApp
         // 界面里到处读 Palette，所以必须在建视图之前把主题定好。
-        Palette.mode = app.settings.theme
+        Palette.mode = app.settings.theme.resolve(this)
         downloads = DownloadsRepository(this)
         screen = MainScreen(this, app, downloads)
         setContentView(screen)
 
-        app.stateListener = stateHandler
+        app.addStateObserver(stateHandler)
         app.settingsListener = settingsHandler
+        app.themeWatcher = themeHandler
 
         setupWindow()
         screen.render(app.currentState())
@@ -84,8 +91,9 @@ class MainActivity : Activity() {
 
     /** 主题变了就整页重建：所有 Palette 颜色都是在建视图时取值的。 */
     private fun applyThemeIfNeeded() {
-        if (Palette.mode == app.settings.theme) return
-        Palette.mode = app.settings.theme
+        val resolved = app.settings.theme.resolve(this)
+        if (Palette.mode == resolved) return
+        Palette.mode = resolved
         window.decorView.post {
             if (!isFinishing && !isDestroyed) recreate()
         }
@@ -93,22 +101,28 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        app.activityForeground = true
         applyKeepScreenOn()
+        applyThemeIfNeeded()
         screen.refreshNotificationAccess()
         app.repository.checkAccessAndRearm()
         app.runSelfCheckAsync()
         screen.render(app.currentState())
+        finishPendingOverlay()
+        LyricOverlayService.refresh(this)
     }
 
     override fun onPause() {
+        app.activityForeground = false
         app.store.flush()
         app.diagnostics.flush()
         super.onPause()
     }
 
     override fun onDestroy() {
-        if (app.stateListener === stateHandler) app.stateListener = null
+        app.removeStateObserver(stateHandler)
         if (app.settingsListener === settingsHandler) app.settingsListener = null
+        if (app.themeWatcher === themeHandler) app.themeWatcher = null
         super.onDestroy()
     }
 
@@ -145,6 +159,12 @@ class MainActivity : Activity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQUEST_OVERLAY_PERMISSION) {
+            // 有的 ROM 直接返回 RESULT_CANCELED，但权限其实已经给了；统一在 onResume 里再确认。
+            finishPendingOverlay()
+            LyricOverlayService.refresh(this)
+            return
+        }
         if (requestCode != REQUEST_BACKGROUND_IMAGE) return
         val uri: Uri = data?.data ?: run {
             Diagnostics.log("[背景] 选择器返回但没有图片：resultCode=$resultCode")
@@ -210,7 +230,48 @@ class MainActivity : Activity() {
         }
     }
 
+    // ----------------------------------------------------------
+    // 悬浮歌词权限
+    // ----------------------------------------------------------
+
+    /**
+     * 请求「显示在其他应用上层」。有的车机 ROM 把这个页面删了，
+     * 弹不出系统页面时给出 adb 兜底命令。
+     */
+    fun requestOverlayPermission() {
+        if (Settings.canDrawOverlays(this)) {
+            toast(this, "已经拥有悬浮窗权限")
+            return
+        }
+        pendingOverlayEnable = true
+        val intent = Intent(
+            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+            Uri.parse("package:$packageName"),
+        )
+        try {
+            startActivityForResult(intent, REQUEST_OVERLAY_PERMISSION)
+            Diagnostics.log("[Overlay] 打开悬浮窗授权页")
+        } catch (error: Exception) {
+            Diagnostics.log("[Overlay] 悬浮窗授权页打不开：$error")
+            toast(this, "这台车机没有悬浮窗授权页，请用 adb 授权（见设置里的提示）", long = true)
+        }
+    }
+
+    /** 从授权页回来：用户刚才想开悬浮歌词的话，现在补上。 */
+    private fun finishPendingOverlay() {
+        if (!pendingOverlayEnable) return
+        if (!Settings.canDrawOverlays(this)) return
+        pendingOverlayEnable = false
+        if (!app.settings.overlay.enabled) {
+            app.setOverlay(app.settings.overlay.copy(enabled = true))
+        }
+        LyricOverlayService.refresh(this)
+        toast(this, "悬浮歌词已开启，回到桌面或导航就能看到")
+        Diagnostics.log("[Overlay] 授权完成，悬浮歌词已开启")
+    }
+
     private companion object {
         const val REQUEST_BACKGROUND_IMAGE = 1001
+        const val REQUEST_OVERLAY_PERMISSION = 1002
     }
 }

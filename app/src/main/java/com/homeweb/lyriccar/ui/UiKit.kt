@@ -1,6 +1,7 @@
 package com.homeweb.lyriccar.ui
 
 import android.content.Context
+import android.content.res.Configuration
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Path
@@ -111,6 +112,50 @@ fun alertDialogTheme(): Int =
     } else {
         android.R.style.Theme_Material_Dialog_Alert
     }
+
+/**
+ * 把设置里的主题解析成真正要用的深 / 浅色。
+ *
+ * 「跟随系统」优先读车机的夜间模式设置（`ui_night_mode`：1=白天 / 2=夜间）。
+ * 为什么不用 `uiMode` 就够了：BYD 的框架把非白名单 App 的 uimode 配置变更
+ * 直接吞掉（日志里的 `isBydUiModeChangeWhitelistApp`），界面不会重建；
+ * 但设置项本身会变，所以我们监听它、自己决定要不要重建。
+ * 设置项是「自动」（0）或读不到时，再看一次 `uiMode`（进程重启后仍有效）。
+ */
+fun ThemeMode.resolve(context: Context): ThemeMode = when (this) {
+    ThemeMode.DARK -> ThemeMode.DARK
+    ThemeMode.LIGHT -> ThemeMode.LIGHT
+    ThemeMode.AUTO -> when (explicitNightSetting(context)) {
+        true -> ThemeMode.DARK
+        false -> ThemeMode.LIGHT
+        null -> if (systemInNightMode(context)) ThemeMode.DARK else ThemeMode.LIGHT
+    }
+}
+
+/** 车机当前是不是夜间模式（系统没上报时按白天处理）。 */
+fun systemInNightMode(context: Context): Boolean =
+    (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+        Configuration.UI_MODE_NIGHT_YES
+
+/**
+ * 车机「白天 / 夜间」设置：2=夜间、1=白天；0（自动）或读不到时返回 null。
+ * 见 [resolve] 里对 BYD uimode 白名单的说明。
+ */
+fun explicitNightSetting(context: Context): Boolean? {
+    val mode = try {
+        android.provider.Settings.Secure.getInt(
+            context.contentResolver,
+            "ui_night_mode",
+        )
+    } catch (_: Exception) {
+        return null
+    }
+    return when (mode) {
+        2 -> true
+        1 -> false
+        else -> null
+    }
+}
 
 fun withAlpha(color: Int, alpha: Int): Int =
     Color.argb(alpha, Color.red(color), Color.green(color), Color.blue(color))

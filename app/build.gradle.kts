@@ -20,8 +20,8 @@ if (hasReleaseKey) {
 
 // ── 版本号 ─────────────────────────────────────────────
 // 只在这里定义一次：APK 文件名（LyricCar v2.4.0.apk）和「关于」面板都读它。
-val appVersionCode = 12
-val appVersionName = "2.6.0"
+val appVersionCode = 13
+val appVersionName = "2.6.1"
 
 android {
     namespace = "com.homeweb.lyriccar"

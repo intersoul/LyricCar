@@ -651,7 +651,15 @@ class SettingsSheet(
         body.addView(
             textView(
                 activity,
-                "浅色适合白天或反光强的车机；切换后界面会重建一次，正在采集的歌词不受影响。",
+                if (app.settings.theme == ThemeMode.AUTO) {
+                    "跟随系统：车机切到夜间模式就变深色，白天切回浅色。\n" +
+                        "系统当前：${if (systemInNightMode(activity)) "夜间（深色）" else "白天（浅色）"} · " +
+                        "现在实际显示：${if (app.settings.theme.resolve(activity) == ThemeMode.LIGHT) "浅色" else "深色"}。\n" +
+                        "切了会重建一次界面，正在采集的歌词不受影响。"
+                } else {
+                    "浅色适合白天或反光强的车机；切换后界面会重建一次，正在采集的歌词不受影响。\n" +
+                        "想让它自己跟着车机的白天 / 夜间模式换，选「跟随系统」。"
+                },
                 15,
                 Palette.TEXT_SECONDARY,
             ).apply { setLineSpacing(0f, 1.5f) },
@@ -671,6 +679,39 @@ class SettingsSheet(
         backgroundSection = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
         body.addView(backgroundSection, matchWidthWrap())
         fillBackgroundSection()
+
+        body.addView(space(activity, 22))
+        body.addView(textView(activity, "悬浮歌词", 18, Palette.TEXT_SECONDARY))
+        body.addView(space(activity, 10))
+        val overlayRow = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = roundedBackground(Palette.SURFACE_LIGHT, 12)
+            setPaddingDp(18, 14, 18, 14)
+            isClickable = true
+            setOnClickListener {
+                sheet.dialog.dismiss()
+                OverlaySheet(activity, app).show()
+            }
+        }
+        val overlayColumn = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+        overlayColumn.addView(textView(activity, "浮在导航 / 桌面上", 18, Palette.TEXT_PRIMARY))
+        val overlayStyle = app.settings.overlay
+        overlayColumn.addView(
+            textView(
+                activity,
+                if (overlayStyle.enabled) {
+                    "已开启 · ${overlayStyle.lines} 行 · ${overlayStyle.font.label}字号"
+                } else {
+                    "像桌面歌词一样浮在屏幕上方，行数 / 字号 / 颜色可调"
+                },
+                14,
+                Palette.TEXT_SECONDARY,
+            ),
+        )
+        overlayRow.addView(overlayColumn, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+        overlayRow.addView(textView(activity, "›", 24, Palette.TEXT_SECONDARY))
+        body.addView(overlayRow, matchWidthWrap())
 
         body.addView(space(activity, 22))
 
@@ -1060,7 +1101,8 @@ class SettingsSheet(
         val PREVIEW_LINES = listOf(
             LyricLine(0, "这一句已经唱过"),
             LyricLine(1_000, "这一句正在唱"),
-            LyricLine(2_000, "这一句还没唱"),
+            LyricLine(2_000, "这一句特别长，长到超出一整行，会把显示不下的部分换到下一行继续显示"),
+            LyricLine(3_000, "这一句还没唱"),
         )
     }
 }

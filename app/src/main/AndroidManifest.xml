@@ -12,6 +12,16 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- 悬浮歌词：浮在导航 / 桌面之上，需要「显示在其他应用上层」。 -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- 前台服务维持悬浮窗（Android 14 起必须声明类型）。 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- 开机后按上次的开关恢复悬浮歌词。 -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Android 13+ 的前台服务通知；不主动申请，没授权也能正常显示歌词。 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!--
       读取蓝牙 A2DP Sink 的 MediaBrowserService（Android 11+ 的包可见性声明）。
       常见的是 com.android.bluetooth；有的 ROM 换了包名 / 类名，所以再按
@@ -22,6 +32,8 @@
         <package android:name="com.byd.bluetooth" />
         <package android:name="com.byd.bt" />
         <package android:name="com.qualcomm.bluetooth" />
+        <!-- 比亚迪「智能加速」白名单页：悬浮歌词需要引导用户把 App 加进去。 -->
+        <package android:name="com.byd.rapidmode" />
         <intent>
             <action android:name="android.media.browse.MediaBrowserService" />
         </intent>
@@ -77,6 +89,29 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+
+        <!--
+          悬浮歌词：前台服务 + 系统级悬浮窗，浮在导航 / 桌面之上。
+          Android 14 起前台服务必须声明类型，specialUse 用于这种「持续显示浮层」的场景。
+        -->
+        <service
+            android:name=".overlay.LyricOverlayService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
+            android:label="@string/app_name">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="floating lyrics overlay over navigation apps" />
+        </service>
+
+        <!-- 开机恢复：只在用户开过悬浮歌词、且仍有悬浮窗权限时才会拉起服务。 -->
+        <receiver
+            android:name=".overlay.OverlayBootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

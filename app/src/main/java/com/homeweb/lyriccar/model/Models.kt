@@ -241,7 +241,10 @@ enum class LyricFieldPreference(val label: String) {
 /** 界面配色。深色是默认，浅色给白天 / 反光严重的车机用。 */
 enum class ThemeMode(val label: String) {
     DARK("深色"),
-    LIGHT("浅色");
+    LIGHT("浅色"),
+
+    /** 跟着车机的白天 / 夜间模式走；解析后仍然落到 DARK / LIGHT。 */
+    AUTO("跟随系统");
 
     companion object {
         fun fromName(name: String?): ThemeMode =

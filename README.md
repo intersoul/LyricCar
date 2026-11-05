@@ -50,11 +50,11 @@
 - 按歌名优先匹配旧稿；歌名重名时按时长挑选；再用歌词文本验证匹配，错了能退回。
 - 半份稿子也能回放，同时继续补词；重听 / 单曲循环自动补开头。
 - 播放控制：上一首 / 播放暂停 / 下一首 / 拖动进度；点歌词某一句跳转到那句。
-- 歌词面板：当前句高亮、自动居中滚动、长句等比缩小、手动上下滑动。
+- 歌词面板：当前句高亮、自动居中滚动、长句**按宽度换行**（不截断、不压扁）、手动上下滑动。
 - 歌词库：查看 / 预览 / 删除单首 / 清空全部；显示句数、完整性、来源。
 - 导出到系统「下载」目录；从下载目录导入；局域网 HTTP 传输（下载 / 上传 / 诊断日志）。
 - 诊断日志：自动落盘、256 KB 滚动、环境自查、导出 / 复制 / 清空 / 手机来取。
-- 设置：歌词写在（自动 / 歌手行 / 专辑行 / 歌曲名行）、连接通道（自动 / 蓝牙 / 系统会话）、界面常亮、深色 / 浅色外观。
+- 设置：歌词写在（自动 / 歌手行 / 专辑行 / 歌曲名行）、连接通道（自动 / 蓝牙 / 系统会话）、界面常亮、深色 / 浅色 / **跟随系统**外观。
 - 歌词样式：字号（小 / 标准 / 大 / 特大）、行距（紧凑 / 标准 / 宽松）、左对齐 / 居中、当前句颜色（主题色 / 暖黄 / 粉 / 绿 / 橙 / 高对比），设置里带真实歌词控件预览，改完立刻生效。
 - 自定义背景：设置 → 背景，可以从系统文件管理器 / 图库选一张图片，用可拖动的「屏幕比例遮罩」框选要用的区域；也可以用纯色，或一键恢复默认背景。图片按屏幕大小压好存在应用私有目录，重启后仍然生效。
 - 左栏透明 / 半透明：图片背景下，左边控制栏可以整块透明（背景图直接露出来，只留中间那条分栏条），也可以铺一层半透明底，设置 → 背景 → 左栏底色。
@@ -62,8 +62,10 @@
 - 竖屏 / 分屏也能用：窗口竖着（竖屏车机、或「平行世界」里被挤成竖条）时自动换成「上边整块歌词 + 下边有一条控制栏」的排法，封面不占地方，分栏条照样能拖。
 - 左栏标题固定显示歌名：不跟着歌词一句句跳；半截插进来听的歌不会把当时那句歌词当成歌名（从头放一遍才记）。
 - 歌词库自动清理：每次启动把「不到 5 句」或「只覆盖 10 秒以内」的记录删掉 —— 列表里滑过去、没完整听的歌不用占地方；自己导入的不动。
+- 外观跟随系统：设置 → 外观选「跟随系统」，车机切白天 / 夜间模式时 App 自己换浅色 / 深色。比亚迪的框架会吞掉非白名单 App 的 uimode 变更，所以这里监听车机的 `ui_night_mode` 设置，切了立刻重建界面。
+- **悬浮歌词（桌面歌词）**：设置 → 悬浮歌词，把当前几句歌词浮在导航 / 桌面上面，LyricCar 自己在前台时自动隐藏。可调显示行数（1 / 2 / 3 / 5）、字号、当前句颜色、底衬（无 / 淡 / 深）；拖动换位置、松手记住，可锁定后点击穿透到下面的导航，点一下回到 LyricCar。前台服务维持，App 退到后台歌词照常滚动。
 - 关于面板：版本号、开发者、GitHub 地址、版权声明，链接可一键打开 / 复制。
-- 不锁横屏，不申请多余权限（Android 10+ 导出不需要存储权限）。
+- 不锁横屏；除悬浮歌词的「显示在其他应用上层」外不申请多余权限（只在打开悬浮歌词时申请，Android 10+ 导出不需要存储权限）。
 
 ## 工程结构
 
@@ -81,9 +83,13 @@ app/src/main/java/com/homeweb/lyriccar/
 │   ├── MediaSourceCoordinator.kt     蓝牙 MediaBrowser 优先 + 通知监听回退
 │   ├── BluetoothBrowserSource.kt     连接蓝牙 A2dpMediaBrowserService（无需通知权限）
 │   └── MediaSessionRepository.kt     读 MediaSession、外推位置、封面、播放控制、诊断
+├── overlay/
+│   ├── LyricOverlayService.kt        悬浮歌词的前台服务（窗口 / 拖动 / 隐藏规则 / 通知）
+│   └── OverlayBootReceiver.kt        开机后按上次开关恢复悬浮歌词
 ├── model/
-│   ├── Models.kt                     MediaInfo / LyricLine / StoredSong / 歌曲 key
+│   ├── Models.kt                     MediaInfo / LyricLine / StoredSong / 歌曲 key / 通道
 │   ├── LyricDisplay.kt               歌词样式档位（字号 / 行距 / 对齐 / 颜色）
+│   ├── OverlayStyle.kt               悬浮歌词样式（行数 / 字号 / 颜色 / 底衬 / 位置）
 │   └── BackgroundStyle.kt            背景模式 / 纯色预设
 ├── transfer/
 │   └── DownloadsRepository.kt        系统「下载」目录导出 / 导入（MediaStore / 旧存储）
@@ -92,12 +98,15 @@ app/src/main/java/com/homeweb/lyriccar/
 └── ui/
     ├── MainActivity.kt               全屏宿主 Activity（横 / 竖屏都行）
     ├── MainScreen.kt                 左「正在播放」+ 右歌词的主界面（竖屏时改成上歌词 / 下控制栏）
-    ├── LyricsView.kt                 自绘歌词列表（高亮 / 居中滚动 / 点击跳转 / 样式可调）
+    ├── LyricsView.kt                 自绘歌词列表（换行 / 高亮 / 居中滚动 / 点击跳转）
+    ├── LyricWrap.kt                  按实际渲染宽度把长句拆成多行
+    ├── OverlayLyricsView.kt          悬浮窗里只画 N 句的轻量视图
+    ├── OverlaySheet.kt               悬浮歌词设置面板（开关 / 行数 / 字号 / 颜色 / 底衬）
     ├── LyricStyle.kt                 把设置里的样式解析成颜色和倍数
     ├── BackgroundCropper.kt          背景图片读取 / 裁剪遮罩 / 保存
     ├── SplitHandle.kt                可拖动的分栏条（左右 / 上下，双击复位）
     ├── Sheets.kt                     歌词库 / 导入 / 设置 / 关于 / 诊断 / 局域网面板
-    └── UiKit.kt                      深色 + 浅色两套配色、dp、圆角背景、按钮等 UI 小工具
+    └── UiKit.kt                      深色 + 浅色两套配色、主题解析、dp、圆角背景、按钮等 UI 小工具
 app/src/main/res/                     主题、颜色、应用名、启动图标
 ```
 
@@ -110,7 +119,7 @@ app/src/main/res/                     主题、颜色、应用名、启动图标
 ```
 <应用私有目录>/files/carlyric/
 ├── lyrics.json         歌词库
-├── settings.json       设置
+├── settings.json       设置（含悬浮歌词开关 / 样式 / 位置）
 ├── background.jpg      自定义背景图片（按屏幕大小压好；恢复默认时删除）
 ├── diagnostics.log     诊断日志（超过 256 KB 滚成 diagnostics.log.1）
 └── diagnostics.log.1   上一份日志
@@ -132,16 +141,16 @@ app/src/main/res/                     主题、颜色、应用名、启动图标
 # 本机 Android Studio 自带 JBR（没有单独装 JDK 时）
 export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 
-./gradlew assembleDebug      # app/build/outputs/apk/debug/LyricCar v2.6.0-debug.apk
-./gradlew assembleRelease    # app/build/outputs/apk/release/LyricCar v2.6.0.apk
+./gradlew assembleDebug      # app/build/outputs/apk/debug/LyricCar v2.6.1-debug.apk
+./gradlew assembleRelease    # app/build/outputs/apk/release/LyricCar v2.6.1.apk
 ```
 
 APK 文件名按 `LyricCar v{版本号}` 生成，版本号在 `app/build.gradle.kts` 顶部的 `appVersionName` 里改一处，「关于」面板显示的是同一个值。
 
-本工程没有 native 库，生成的 APK 约 0.8 MB；直接安装 `LyricCar v2.6.0.apk` 即可。文件名带空格，命令行安装要加引号：
+本工程没有 native 库，生成的 APK 约 0.8 MB；直接安装 `LyricCar v2.6.1.apk` 即可。文件名带空格，命令行安装要加引号：
 
 ```bash
-adb install -r "app/build/outputs/apk/release/LyricCar v2.6.0.apk"
+adb install -r "app/build/outputs/apk/release/LyricCar v2.6.1.apk"
 ```
 
 发布签名口令放在 `app/key.properties`（已被 `.gitignore` 排除，模板见 `app/key.properties.example`）。没配这个文件时 release 会退回 debug 签名，只够本地跑通构建，**不要**拿那种包当正式包。
@@ -161,9 +170,10 @@ adb install -r "app/build/outputs/apk/release/LyricCar v2.6.0.apk"
 5. 点歌词任意一行可以跳转到那句（通过 MediaController 转发给播放器）。
 6. 想换车机 / 备份时，进「歌词库」用「导出到下载」或「局域网传输」。
 7. 左右两栏中间那条线可以直接手指左右拖动，改两栏宽度；松手自动记住，双击那条线恢复默认 40%。
-8. 白天屏幕反光看不清，去「设置 → 外观」切成「浅色」；想换回来切「深色」即可，设置会记住。
+8. 白天屏幕反光看不清，去「设置 → 外观」切成「浅色」；想让它跟着车机的白天 / 夜间模式自己换，选「跟随系统」。
 9. 歌词字太小 / 想居中 / 想换个颜色，去「设置 → 歌词样式」：字号、行距、左对齐 / 居中、当前句颜色都能调，面板里就是用真实歌词控件做的预览，改完立刻生效。
 10. 想换背景，去「设置 → 背景」：点「从图库选择图片」，在系统文件管理器 / 图库里选图，再用可拖动的遮罩选框挑区域，点「使用这张」即可；也可以直接点纯色色块，或者「恢复默认背景」。选图片时「左栏底色」决定左边控制栏是透明还是半透明。
+11. 想一边导航一边看歌词，去「设置 → 悬浮歌词」打开开关（第一次要先给「显示在其他应用上层」权限），回到桌面或打开高德就能看到；行数 / 字号 / 颜色 / 底衬都能在面板里调，面板里有实时预览。
 
 如果一直采不到歌词，去「设置 → 歌词写在」把手动档切成「专辑行 / 歌手行 / 歌曲名行」试试 —— 左侧面板把三行原始内容显示出来，就是给这个排查用的。
 
@@ -221,6 +231,24 @@ adb install -r "app/build/outputs/apk/release/LyricCar v2.6.0.apk"
 拖动进度条可能不会跳转，上一首也可能不可用；这是车机蓝牙栈的限制，
 原来的通知监听方案同样如此。歌词显示、采集、播放/暂停不受影响。
 
+## 悬浮歌词（桌面歌词）
+
+设置 → 悬浮歌词，把当前几句歌词浮在**导航 / 桌面**上面 —— 高德在底下指路，歌词在上面滚动，两个同时用。
+
+- **开关**：第一次打开要先给「显示在其他应用上层」（`SYSTEM_ALERT_WINDOW`）；系统设置里没有这一页时用 adb：
+  `adb shell appops set com.homeweb.lyriccar SYSTEM_ALERT_WINDOW allow`
+- **样式**：显示行数（1 / 2 / 3 / 5）、字号（小 / 标准 / 大 / 特大）、当前句颜色（主题色 / 暖黄 / 粉 / 绿 / 橙 / 高对比）、底衬（无 / 淡 / 深）；面板里有实时预览。长句同样按宽度换行。
+- **位置**：手指拖动悬浮窗，松手自动记住（按屏幕比例存，换分辨率也能还原）；「回到屏幕上方」一键复位。
+- **锁定**：锁定后悬浮窗不再接收点击，直接穿透到下面的导航；要挪位置先回设置里关掉。
+- **点一下**悬浮窗回到 LyricCar；LyricCar 自己在界面里时悬浮窗会自动隐藏，不挡设置面板。
+- 由前台服务维持（通知栏有一条「悬浮歌词」），App 退到后台、打开导航时歌词继续滚动；没有歌词（未在播放 / 还没采到）时自动隐藏。
+
+### 比亚迪车机要注意
+
+- **「智能加速」会清后台**：BYD 的 `RapidModeService` 在回到桌面时会 force-stop 上一个第三方 App，悬浮歌词会一起消失。把 LyricCar 加进它的**加速白名单**（允许后台运行）才会一直浮着；设置面板里有「打开加速白名单」按钮。
+- **开机广播被跳过**：实测 BYD 的 `BroadcastQueue` 直接跳过非白名单 App 的 `BOOT_COMPLETED`（日志 `ssc_skip ... ignored`），所以开机后不会自动恢复。打开一次 LyricCar，悬浮歌词就会按上次的开关回来。
+- 其他 ROM 没有这两个限制，`OverlayBootReceiver` 会正常开机拉起。
+
 ## 实机验证
 
 已在 BYD 车机（`alps k65v1_64_bsp`，Android 9，1280×720）上实际验证：
@@ -238,7 +266,12 @@ adb install -r "app/build/outputs/apk/release/LyricCar v2.6.0.apk"
 - 歌词库启动清理：真机上 167 首里清掉 5 首「1~3 句、覆盖 0~7 秒」的记录，2 句的纯音乐记录也一并清掉，完整稿和导入稿不动；
 - 左栏标题在「歌词写在歌曲名行」的播放器上固定显示歌名（不再跟着歌词跳），歌名从「歌手行 = 歌曲名 - 歌手」里切出来，歌手行同步只显示歌手；
 - 连接通道实测：设置里切「蓝牙」后日志记下 `设置：通道=蓝牙`、状态行显示「蓝牙通道」、播放与采集不中断；切「系统会话」（本车未授予通知使用权）时立刻提示「先开一个系统权限」，切回「自动」后歌词立即恢复；通道选择在覆盖安装 / 重启后保留；
-- 蓝牙服务发现：本车候选 1 个（`com.android.bluetooth/.a2dpsink.mbs.A2dpMediaBrowserService`），诊断日志列出候选、当前候选和失败轮次。
+- 蓝牙服务发现：本车候选 1 个（`com.android.bluetooth/.a2dpsink.mbs.A2dpMediaBrowserService`），诊断日志列出候选、当前候选和失败轮次；
+- 长句换行：把窗口缩到 360×640（`wm size 360x640`）后，`Whatever happens don't let go of my hand` 自动拆成两行显示（两行都完整，没有截断）；设置面板的预览里长句同样换行；
+- 外观跟随系统：选「跟随系统」后，`adb shell cmd uimode night yes/no` 切换车机昼夜模式，App 立刻重建为深色 / 浅色（日志 `车机昼夜模式变了：夜间/白天`）—— BYD 会跳过非白名单 App 的 uimode 变更，所以改成了监听 `ui_night_mode`；
+- 悬浮歌词：授权后打开开关，回到桌面 / 高德都能看到歌词浮在上面（3 行 / 5 行、字号、暖黄、深底衬逐个切换生效，面板预览同步）；
+- 悬浮窗拖动后松手记住位置，杀掉 App 重开仍在原位置；锁定后点击穿透到导航；单击悬浮窗回到 LyricCar；LyricCar 在前台时悬浮窗隐藏；
+- BYD 限制实测：不在「加速白名单」时按 Home 会被 `RapidModeService` 强杀（日志 `kill3rdApp`），加入白名单后正常；开机不会自动恢复（日志 `ssc_skip ... ignored`），打开一次 App 即可。
 
 ## 用 adb 打开「通知使用权」
 
@@ -280,7 +313,7 @@ App 里所有 `[LyricCar]` 日志同时进 logcat 和 `diagnostics.log`。启动
 
 ```
 ──── 环境自查 ────
-App 版本 2.6.0
+App 版本 2.6.1
 ✓ 通知使用权：已授予
 监听组件：com.homeweb.lyriccar/com.homeweb.lyriccar.MediaSessionListenerService
 ──── 系统与会话 ────

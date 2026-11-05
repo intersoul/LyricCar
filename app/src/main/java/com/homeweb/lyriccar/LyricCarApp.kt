@@ -15,9 +15,14 @@ import com.homeweb.lyriccar.model.LyricDisplay
 import com.homeweb.lyriccar.model.LyricFieldPreference
 import com.homeweb.lyriccar.model.LyricSessionState
 import com.homeweb.lyriccar.model.MediaInfo
+import com.homeweb.lyriccar.model.OverlayStyle
 import com.homeweb.lyriccar.model.PanelTone
 import com.homeweb.lyriccar.model.SourceChannel
 import com.homeweb.lyriccar.model.ThemeMode
+import com.homeweb.lyriccar.overlay.LyricOverlayService
+import com.homeweb.lyriccar.ui.Palette
+import com.homeweb.lyriccar.ui.explicitNightSetting
+import com.homeweb.lyriccar.ui.resolve
 import java.io.File
 import kotlin.math.abs
 
@@ -57,8 +62,37 @@ class LyricCarApp : Application() {
     private var lastInfo: MediaInfo? = null
     private var lastState: LyricSessionState = LyricSessionState()
 
+    /** 主界面是不是在前台；悬浮歌词据此决定「藏起来还是浮出来」。 */
     @Volatile
-    var stateListener: ((LyricSessionState) -> Unit)? = null
+    var activityForeground: Boolean = false
+
+    /** 「跟随系统」时车机昼夜模式变了：界面据此重新解析主题并重建。 */
+    @Volatile
+    var themeWatcher: (() -> Unit)? = null
+
+    /** BYD 的框架会吞掉非白名单 App 的 uimode 变更，只能监听设置项自己判断。 */
+    private val nightModeObserver = object : android.database.ContentObserver(mainHandler) {
+        override fun onChange(selfChange: Boolean) {
+            if (settings.theme != ThemeMode.AUTO) return
+            val night = explicitNightSetting(this@LyricCarApp)
+            diagnostics.log(
+                "[LyricCar] 车机昼夜模式变了：${night?.let { if (it) "夜间" else "白天" } ?: "自动"}",
+            )
+            themeWatcher?.invoke()
+            LyricOverlayService.refresh(this@LyricCarApp)
+        }
+    }
+
+    /** 主界面和悬浮歌词都要看「现在唱到哪句」，所以状态改成多播。 */
+    private val stateObservers = java.util.concurrent.CopyOnWriteArrayList<(LyricSessionState) -> Unit>()
+
+    fun addStateObserver(observer: (LyricSessionState) -> Unit) {
+        if (!stateObservers.contains(observer)) stateObservers.add(observer)
+    }
+
+    fun removeStateObserver(observer: (LyricSessionState) -> Unit) {
+        stateObservers.remove(observer)
+    }
 
     @Volatile
     var settingsListener: ((AppSettings) -> Unit)? = null
@@ -69,6 +103,13 @@ class LyricCarApp : Application() {
         super.onCreate()
         diagnostics = Diagnostics.install(this)
         settings = AppSettings.load(directory)
+        // 界面 / 悬浮窗都按解析后的深浅色建视图，Application 阶段先定好。
+        Palette.mode = settings.theme.resolve(this)
+        contentResolver.registerContentObserver(
+            android.provider.Settings.Secure.getUriFor("ui_night_mode"),
+            false,
+            nightModeObserver,
+        )
         store = LyricStore.open(directory)
         pruneWeakEntries()
         engine = LyricCaptureEngine(
@@ -81,7 +122,7 @@ class LyricCarApp : Application() {
             lastInfo = info
             val state = engine.handle(info)
             lastState = state
-            stateListener?.invoke(state)
+            for (observer in stateObservers) observer(state)
         }
         repository.start()
         runSelfCheckAsync()
@@ -92,7 +133,7 @@ class LyricCarApp : Application() {
     fun refreshEngine() {
         lastInfo?.let { info ->
             lastState = engine.handle(info)
-            stateListener?.invoke(lastState)
+            for (observer in stateObservers) observer(lastState)
         }
     }
 
@@ -118,8 +159,10 @@ class LyricCarApp : Application() {
         if (settings.theme == mode) return
         settings = settings.copy(theme = mode)
         settings.save(directory)
+        // 不要在这里改 Palette.mode：界面要靠「旧值 != 新解析值」判断该重建。
         diagnostics.log("[LyricCar] 设置：外观=${mode.label}")
         settingsListener?.invoke(settings)
+        LyricOverlayService.refresh(this)
     }
 
     /** 换播放信息的来源通道（自动 / 蓝牙 / 系统会话），立刻重选一次数据。 */
@@ -212,8 +255,41 @@ class LyricCarApp : Application() {
         setBackground(BackgroundStyle(panel = settings.background.panel))
     }
 
+    /** 悬浮歌词的设置变更：写盘并让悬浮服务按新样式重建 / 开始 / 停止。 */
+    fun setOverlay(style: OverlayStyle) {
+        val next = style.sanitized()
+        if (settings.overlay == next) {
+            // 样式没变也要让服务重新读一次（比如刚拿到悬浮窗权限）。
+            LyricOverlayService.refresh(this)
+            return
+        }
+        settings = settings.copy(overlay = next)
+        settings.save(directory)
+        diagnostics.log(
+            "[LyricCar] 设置：悬浮歌词=${if (next.enabled) "开" else "关"} " +
+                "${next.lines} 行 · 字号=${next.font.label} · 颜色=${next.color.label} · " +
+                "底衬=${next.backdrop.label}${if (next.locked) " · 锁定位置" else ""}",
+        )
+        LyricOverlayService.refresh(this)
+    }
+
+    /** 拖动悬浮窗松手：只记位置，不触发服务重建。 */
+    fun saveOverlayPosition(centerX: Float, centerY: Float) {
+        val overlay = settings.overlay
+        val next = overlay.copy(centerX = centerX, centerY = centerY).sanitized()
+        if (abs(next.centerX - overlay.centerX) < 0.001f &&
+            abs(next.centerY - overlay.centerY) < 0.001f
+        ) {
+            return
+        }
+        settings = settings.copy(overlay = next)
+        settings.save(directory)
+    }
+
     fun notifyState() {
-        mainHandler.post { stateListener?.invoke(lastState) }
+        mainHandler.post {
+            for (observer in stateObservers) observer(lastState)
+        }
     }
 
     /** 启动时清一遍歌词库：听了几秒就跳走的歌不必留着。 */

@@ -12,14 +12,16 @@ import android.view.animation.DecelerateInterpolator
 import com.homeweb.lyriccar.model.LyricLine
 import kotlin.math.abs
 import kotlin.math.max
-import kotlin.math.min
 
 /**
- * 歌词列表：固定行高、当前句高亮并自动居中，长句等比缩小到宽度以内，
+ * 歌词列表：当前句高亮并自动居中，长句按面板宽度换行（不截断、不压扁），
  * 点击某句可以跳转到那句（回放时）。
  *
  * 字号 / 行距 / 水平对齐 / 当前句颜色都来自 [LyricStyle]，由设置面板控制；
- * 样式变化时调用 [applyStyle]，会按新行高重新把当前句滚到中间。
+ * 样式变化时调用 [applyStyle]，会按新的行高重新把当前句滚到中间。
+ *
+ * 布局按「歌词句 → 若干显示行」组织：每句先量出要占几行，再算累计高度，
+ * 滚动、自动居中、点击都基于这份累计高度，所以换行后依然对得准。
  */
 class LyricsView(context: Context) : View(context) {
 
@@ -42,6 +44,15 @@ class LyricsView(context: Context) : View(context) {
     private var scrollOffset = 0f
     private var animator: ValueAnimator? = null
 
+    /** 每句歌词换行后的结果。宽度 / 字号不变时复用，不每帧重算。 */
+    private var blocks: List<LyricBlock> = emptyList()
+    private var blockTops = FloatArray(0)
+    private var contentHeight = 0f
+    private var layoutDirty = true
+    private var layoutWidth = 0
+    private var layoutActiveSize = 0f
+    private var layoutInactiveSize = 0f
+
     /** 真正的歌词界面用默认值；设置面板里的预览会关掉手势，交给外层 ScrollView。 */
     var interactive: Boolean = true
 
@@ -51,6 +62,8 @@ class LyricsView(context: Context) : View(context) {
     private var downScroll = 0f
     private var moved = false
     private val touchSlop = dpF(6)
+
+    private data class LyricBlock(val rows: List<String>, val height: Float)
 
     init {
         recalcSizes()
@@ -68,11 +81,13 @@ class LyricsView(context: Context) : View(context) {
 
     fun setLines(newLines: List<LyricLine>, current: Int) {
         val changed = newLines !== lines || current != lastIndex || newLines.size != lastCount
+        if (current != currentIndex) layoutDirty = true
         lines = newLines
         currentIndex = current
         if (!changed) return
         lastCount = newLines.size
         lastIndex = current
+        layoutDirty = true
         if (current >= 0) {
             if (height == 0) {
                 post { scrollToLine(current, animate = true) }
@@ -88,26 +103,76 @@ class LyricsView(context: Context) : View(context) {
         activeSize = sp(BASE_ACTIVE_SP * style.fontScale)
         inactiveSize = sp(BASE_INACTIVE_SP * style.fontScale)
         lineHeight = dpF(BASE_LINE_DP * style.fontScale * style.lineSpacing)
+        layoutDirty = true
     }
 
     private fun sp(value: Float): Float =
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, value, resources.displayMetrics)
 
+    /**
+     * 按当前宽度 / 字号把每句歌词换成显示行。换行结果缓存在 [blocks] 里，
+     * 只有宽度、字号、歌词列表或当前句变化时才重算。
+     */
+    private fun ensureLayout() {
+        if (!layoutDirty && layoutWidth == width &&
+            layoutActiveSize == activeSize && layoutInactiveSize == inactiveSize
+        ) {
+            return
+        }
+        layoutDirty = false
+        layoutWidth = width
+        layoutActiveSize = activeSize
+        layoutInactiveSize = inactiveSize
+        blocks = emptyList()
+        blockTops = FloatArray(0)
+        contentHeight = 0f
+
+        val available = width - paddingHorizontal * 2
+        if (available <= 0f || lines.isEmpty()) return
+
+        val result = ArrayList<LyricBlock>(lines.size)
+        val tops = FloatArray(lines.size)
+        var top = 0f
+        for (i in lines.indices) {
+            val block = layoutBlock(lines[i].text, i == currentIndex, available)
+            tops[i] = top
+            top += block.height
+            result.add(block)
+        }
+        blocks = result
+        blockTops = tops
+        contentHeight = top
+    }
+
+    private fun layoutBlock(text: String, active: Boolean, available: Float): LyricBlock {
+        paint.textSize = if (active) activeSize else inactiveSize
+        paint.typeface = if (active) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+        val rows = wrapLyricRows(paint, text, available)
+        return LyricBlock(rows, rows.size * lineHeight)
+    }
+
     private fun maxScroll(): Float {
-        val content = paddingTop * 2 + lines.size * lineHeight
+        val content = paddingTop * 2 + contentHeight
         return max(0f, content - height)
     }
 
     private fun targetFor(index: Int): Float {
-        val target = paddingTop + index * lineHeight - height / 2f + lineHeight / 2f
+        if (index !in blocks.indices) return 0f
+        val target = paddingTop + blockTops[index] + blocks[index].height / 2f - height / 2f
         return target.coerceIn(0f, maxScroll())
     }
 
     private fun scrollToLine(index: Int, animate: Boolean) {
-        if (index < 0) return
+        if (index < 0 || index >= lines.size) return
+        if (height == 0 || width == 0) {
+            // 还没量过尺寸：等一帧再滚；已经不在窗口上就别再排队了（否则空转）。
+            if (isAttachedToWindow) post { scrollToLine(index, animate) }
+            return
+        }
+        ensureLayout()
         val target = targetFor(index)
         animator?.cancel()
-        if (!animate || height == 0) {
+        if (!animate) {
             scrollOffset = target
             invalidate()
             return
@@ -123,36 +188,38 @@ class LyricsView(context: Context) : View(context) {
         }
     }
 
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        layoutDirty = true
+        if (currentIndex >= 0) scrollToLine(currentIndex, animate = false)
+    }
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         if (lines.isEmpty()) return
-        val available = width - paddingHorizontal * 2
-        if (available <= 0) return
+        if (width <= 0) return
+        ensureLayout()
+        if (blocks.isEmpty()) return
 
-        val first = max(0, ((scrollOffset - paddingTop) / lineHeight).toInt())
-        val last = min(lines.size - 1, ((scrollOffset + height - paddingTop) / lineHeight).toInt() + 1)
+        scrollOffset = scrollOffset.coerceIn(0f, maxScroll())
 
-        for (i in first..last) {
-            val line = lines[i]
+        for (i in blocks.indices) {
+            val block = blocks[i]
+            val blockTop = paddingTop + blockTops[i] - scrollOffset
+            if (blockTop + block.height < -lineHeight) continue
+            if (blockTop > height + lineHeight) break
+
             val active = i == currentIndex
             paint.textSize = if (active) activeSize else inactiveSize
             paint.typeface = if (active) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
             paint.color = if (active) style.activeColor else style.inactiveColor
             paint.textAlign = if (style.centered) Paint.Align.CENTER else Paint.Align.LEFT
-
-            val top = paddingTop + i * lineHeight - scrollOffset
-            val baseline = top + lineHeight / 2f - (paint.ascent() + paint.descent()) / 2f
-            val measured = paint.measureText(line.text)
             val anchorX = if (style.centered) width / 2f else paddingHorizontal
-            if (measured <= available || measured <= 0f) {
-                canvas.drawText(line.text, anchorX, baseline, paint)
-            } else {
-                val scale = available / measured
-                val save = canvas.save()
-                canvas.translate(anchorX, baseline)
-                canvas.scale(scale, 1f)
-                canvas.drawText(line.text, 0f, 0f, paint)
-                canvas.restoreToCount(save)
+
+            block.rows.forEachIndexed { rowIndex, text ->
+                val rowTop = blockTop + rowIndex * lineHeight
+                val baseline = rowTop + lineHeight / 2f - (paint.ascent() + paint.descent()) / 2f
+                canvas.drawText(text, anchorX, baseline, paint)
             }
         }
     }
@@ -178,7 +245,7 @@ class LyricsView(context: Context) : View(context) {
 
             MotionEvent.ACTION_UP -> {
                 if (!moved) {
-                    val index = ((event.y + scrollOffset - paddingTop) / lineHeight).toInt()
+                    val index = blockIndexAt(event.y + scrollOffset - paddingTop)
                     val seek = onSeek
                     if (seek != null && index in lines.indices) {
                         performClick()
@@ -191,6 +258,26 @@ class LyricsView(context: Context) : View(context) {
             MotionEvent.ACTION_CANCEL -> return true
         }
         return super.onTouchEvent(event)
+    }
+
+    /** 某个纵向位置落在第几句上；落在两句之间的空隙里返回 -1。 */
+    private fun blockIndexAt(y: Float): Int {
+        if (blocks.isEmpty()) return -1
+        var low = 0
+        var high = blocks.lastIndex
+        var found = -1
+        while (low <= high) {
+            val mid = (low + high) ushr 1
+            if (blockTops[mid] <= y) {
+                found = mid
+                low = mid + 1
+            } else {
+                high = mid - 1
+            }
+        }
+        if (found < 0) return -1
+        if (y > blockTops[found] + blocks[found].height) return -1
+        return found
     }
 
     override fun performClick(): Boolean {

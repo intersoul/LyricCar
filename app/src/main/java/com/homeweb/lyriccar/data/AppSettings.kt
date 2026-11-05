@@ -9,6 +9,8 @@ import com.homeweb.lyriccar.model.LyricDisplay
 import com.homeweb.lyriccar.model.LyricFieldPreference
 import com.homeweb.lyriccar.model.LyricFontScale
 import com.homeweb.lyriccar.model.LyricLineSpacing
+import com.homeweb.lyriccar.model.OverlayBackdrop
+import com.homeweb.lyriccar.model.OverlayStyle
 import com.homeweb.lyriccar.model.PanelTone
 import com.homeweb.lyriccar.model.SourceChannel
 import com.homeweb.lyriccar.model.ThemeMode
@@ -28,6 +30,8 @@ data class AppSettings(
     val background: BackgroundStyle = BackgroundStyle(),
     /** 播放信息的来源通道：自动 / 蓝牙 / 系统会话。 */
     val channel: SourceChannel = SourceChannel.AUTO,
+    /** 悬浮歌词：开关 / 行数 / 字号 / 颜色 / 底衬 / 锁定 / 位置。 */
+    val overlay: OverlayStyle = OverlayStyle(),
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("field", field.name.lowercase())
@@ -43,6 +47,14 @@ data class AppSettings(
         put("bgColor", background.color.name.lowercase())
         put("bgImage", background.imageName)
         put("bgPanel", background.panel.name.lowercase())
+        put("overlayEnabled", overlay.enabled)
+        put("overlayLines", overlay.lines)
+        put("overlayFont", overlay.font.name.lowercase())
+        put("overlayColor", overlay.color.name.lowercase())
+        put("overlayBackdrop", overlay.backdrop.name.lowercase())
+        put("overlayLocked", overlay.locked)
+        put("overlayX", overlay.centerX.toDouble())
+        put("overlayY", overlay.centerY.toDouble())
     }
 
     fun save(directory: File) {
@@ -94,6 +106,16 @@ data class AppSettings(
                         panel = PanelTone.fromName(json.optString("bgPanel")),
                     ),
                     channel = SourceChannel.fromName(json.optString("channel")),
+                    overlay = OverlayStyle(
+                        enabled = json.optBoolean("overlayEnabled", false),
+                        lines = json.optInt("overlayLines", OverlayStyle.DEFAULT_LINES),
+                        font = LyricFontScale.fromName(json.optString("overlayFont")),
+                        color = LyricColorPreset.fromName(json.optString("overlayColor")),
+                        backdrop = OverlayBackdrop.fromName(json.optString("overlayBackdrop")),
+                        locked = json.optBoolean("overlayLocked", false),
+                        centerX = json.optDouble("overlayX", 0.5).toFloat(),
+                        centerY = json.optDouble("overlayY", 0.12).toFloat(),
+                    ).sanitized(),
                 )
             } catch (error: Exception) {
                 Diagnostics.current?.log("设置读取失败，用默认值：$error")
