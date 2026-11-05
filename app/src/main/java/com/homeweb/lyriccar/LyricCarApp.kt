@@ -274,11 +274,14 @@ class LyricCarApp : Application() {
     }
 
     /** 拖动悬浮窗松手：只记位置，不触发服务重建。 */
-    fun saveOverlayPosition(centerX: Float, centerY: Float) {
+    fun saveOverlayPosition(leftFraction: Float, topFraction: Float) {
         val overlay = settings.overlay
-        val next = overlay.copy(centerX = centerX, centerY = centerY).sanitized()
-        if (abs(next.centerX - overlay.centerX) < 0.001f &&
-            abs(next.centerY - overlay.centerY) < 0.001f
+        val next = overlay.copy(
+            leftFraction = leftFraction,
+            topFraction = topFraction,
+        ).sanitized()
+        if (abs(next.leftFraction - overlay.leftFraction) < 0.001f &&
+            abs(next.topFraction - overlay.topFraction) < 0.001f
         ) {
             return
         }

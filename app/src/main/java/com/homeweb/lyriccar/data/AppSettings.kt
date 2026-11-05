@@ -10,6 +10,7 @@ import com.homeweb.lyriccar.model.LyricFieldPreference
 import com.homeweb.lyriccar.model.LyricFontScale
 import com.homeweb.lyriccar.model.LyricLineSpacing
 import com.homeweb.lyriccar.model.OverlayBackdrop
+import com.homeweb.lyriccar.model.OverlayOutline
 import com.homeweb.lyriccar.model.OverlayStyle
 import com.homeweb.lyriccar.model.PanelTone
 import com.homeweb.lyriccar.model.SourceChannel
@@ -52,9 +53,11 @@ data class AppSettings(
         put("overlayFont", overlay.font.name.lowercase())
         put("overlayColor", overlay.color.name.lowercase())
         put("overlayBackdrop", overlay.backdrop.name.lowercase())
+        put("overlayOutline", overlay.outline.name.lowercase())
+        put("overlayWidth", overlay.widthPercent)
         put("overlayLocked", overlay.locked)
-        put("overlayX", overlay.centerX.toDouble())
-        put("overlayY", overlay.centerY.toDouble())
+        put("overlayLeft", overlay.leftFraction.toDouble())
+        put("overlayTop", overlay.topFraction.toDouble())
     }
 
     fun save(directory: File) {
@@ -112,9 +115,20 @@ data class AppSettings(
                         font = LyricFontScale.fromName(json.optString("overlayFont")),
                         color = LyricColorPreset.fromName(json.optString("overlayColor")),
                         backdrop = OverlayBackdrop.fromName(json.optString("overlayBackdrop")),
+                        outline = OverlayOutline.fromName(json.optString("overlayOutline")),
+                        widthPercent = json.optInt(
+                            "overlayWidth",
+                            OverlayStyle.DEFAULT_WIDTH_PERCENT,
+                        ),
                         locked = json.optBoolean("overlayLocked", false),
-                        centerX = json.optDouble("overlayX", 0.5).toFloat(),
-                        centerY = json.optDouble("overlayY", 0.12).toFloat(),
+                        leftFraction = json.optDouble(
+                            "overlayLeft",
+                            OverlayStyle.DEFAULT_LEFT.toDouble(),
+                        ).toFloat(),
+                        topFraction = json.optDouble(
+                            "overlayTop",
+                            OverlayStyle.DEFAULT_TOP.toDouble(),
+                        ).toFloat(),
                     ).sanitized(),
                 )
             } catch (error: Exception) {

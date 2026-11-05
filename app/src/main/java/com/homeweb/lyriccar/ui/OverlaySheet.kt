@@ -9,6 +9,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup.LayoutParams
 import android.widget.LinearLayout
+import android.widget.SeekBar
 import android.widget.Switch
 import android.widget.TextView
 import com.homeweb.lyriccar.LyricCarApp
@@ -16,6 +17,7 @@ import com.homeweb.lyriccar.model.LyricColorPreset
 import com.homeweb.lyriccar.model.LyricFontScale
 import com.homeweb.lyriccar.model.LyricLine
 import com.homeweb.lyriccar.model.OverlayBackdrop
+import com.homeweb.lyriccar.model.OverlayOutline
 import com.homeweb.lyriccar.model.OverlayStyle
 
 /**
@@ -60,12 +62,7 @@ class OverlaySheet(
         )
         switchRow.addView(switchColumn, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
         switchRow.addView(
-            Switch(activity).apply {
-                isChecked = style.enabled
-                thumbTintList = ColorStateList.valueOf(Palette.ACCENT)
-                trackTintList = ColorStateList.valueOf(withAlpha(Palette.ACCENT, 90))
-                setOnCheckedChangeListener { _, value -> toggle(value) }
-            },
+            switch(style.enabled) { value -> toggle(value) },
         )
         body.addView(switchRow, matchWidthWrap())
 
@@ -139,8 +136,10 @@ class OverlaySheet(
             background = roundedBackground(0xFF2B3A4B.toInt(), 16)
             setPaddingDp(10, 10, 10, 10)
         }
+        val previewMaxWidth = (activity.resources.displayMetrics.widthPixels * 0.62f).toInt()
         val preview = OverlayLyricsView(activity).apply {
-            maxWidthPx = (activity.resources.displayMetrics.widthPixels * 0.62f).toInt()
+            maxWidthPx = previewMaxWidth
+            fixedWidthPx = (previewMaxWidth * style.widthPercent / 100f).toInt()
             applyStyle(style)
             setLyrics(PREVIEW_LINES, 1)
         }
@@ -167,6 +166,48 @@ class OverlaySheet(
                 },
             ),
             matchWidthWrap(),
+        )
+
+        // 固定宽度
+        body.addView(space(activity, 12))
+        val widthLabel = textView(
+            activity,
+            "窗口宽度：${style.widthPercent}%",
+            14,
+            Palette.TEXT_SECONDARY,
+        )
+        body.addView(widthLabel)
+        body.addView(space(activity, 4))
+        body.addView(
+            SeekBar(activity).apply {
+                max = OverlayStyle.MAX_WIDTH_PERCENT - OverlayStyle.MIN_WIDTH_PERCENT
+                progress = style.widthPercent - OverlayStyle.MIN_WIDTH_PERCENT
+                thumbTintList = ColorStateList.valueOf(Palette.ACCENT)
+                progressTintList = ColorStateList.valueOf(Palette.ACCENT)
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(bar: SeekBar?, progress: Int, fromUser: Boolean) {
+                        widthLabel.text =
+                            "窗口宽度：${progress + OverlayStyle.MIN_WIDTH_PERCENT}%"
+                    }
+
+                    override fun onStartTrackingTouch(bar: SeekBar?) = Unit
+
+                    override fun onStopTrackingTouch(bar: SeekBar?) {
+                        val value = (bar?.progress ?: 0) + OverlayStyle.MIN_WIDTH_PERCENT
+                        apply(style.copy(widthPercent = value))
+                    }
+                })
+            },
+            matchWidthWrap(),
+        )
+        body.addView(space(activity, 6))
+        body.addView(
+            textView(
+                activity,
+                "宽度固定后，歌词长一句短一句都不会再把窗口左右拽；一行放不下自动换行。",
+                13,
+                Palette.TEXT_SECONDARY,
+            ),
         )
 
         // 字号
@@ -214,6 +255,30 @@ class OverlaySheet(
             ),
         )
 
+        // 描边
+        body.addView(space(activity, 12))
+        body.addView(textView(activity, "文字描边", 14, Palette.TEXT_SECONDARY))
+        body.addView(space(activity, 8))
+        body.addView(
+            chipRow(
+                OverlayOutline.entries.map { outline ->
+                    chip(outline.label, style.outline == outline) {
+                        apply(style.copy(outline = outline))
+                    }
+                },
+            ),
+            matchWidthWrap(),
+        )
+        body.addView(space(activity, 6))
+        body.addView(
+            textView(
+                activity,
+                "底衬选「无」时建议加「细」或「粗」黑边：压在浅色地图 / 桌面壁纸上，字也不会糊。",
+                13,
+                Palette.TEXT_SECONDARY,
+            ),
+        )
+
         // 锁定 + 位置
         body.addView(space(activity, 16))
         val lockRow = LinearLayout(activity).apply {
@@ -234,19 +299,19 @@ class OverlaySheet(
         )
         lockRow.addView(lockColumn, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
         lockRow.addView(
-            Switch(activity).apply {
-                isChecked = style.locked
-                thumbTintList = ColorStateList.valueOf(Palette.ACCENT)
-                trackTintList = ColorStateList.valueOf(withAlpha(Palette.ACCENT, 90))
-                setOnCheckedChangeListener { _, value -> apply(style.copy(locked = value)) }
-            },
+            switch(style.locked) { value -> apply(style.copy(locked = value)) },
         )
         body.addView(lockRow, matchWidthWrap())
 
         body.addView(space(activity, 10))
         body.addView(
             outlinedButton(activity, "回到屏幕上方", hPadding = 18) {
-                apply(style.copy(centerX = 0.5f, centerY = 0.12f))
+                apply(
+                    style.copy(
+                        leftFraction = style.centeredLeftFraction(),
+                        topFraction = OverlayStyle.DEFAULT_TOP,
+                    ),
+                )
             },
             matchWidthWrap(),
         )
@@ -283,6 +348,21 @@ class OverlaySheet(
         app.setOverlay(style)
         rebuild()
     }
+
+    /** 开关：开=主题色、关=灰，一眼能看出状态（默认 tint 两种状态颜色太像）。 */
+    private fun switch(checked: Boolean, onChange: (Boolean) -> Unit): Switch =
+        Switch(activity).apply {
+            isChecked = checked
+            thumbTintList = ColorStateList(
+                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+                intArrayOf(Palette.ACCENT, 0xFF9AA7B2.toInt()),
+            )
+            trackTintList = ColorStateList(
+                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+                intArrayOf(withAlpha(Palette.ACCENT, 90), withAlpha(0xFF9AA7B2.toInt(), 60)),
+            )
+            setOnCheckedChangeListener { _, value -> onChange(value) }
+        }
 
     private fun colorRow(style: OverlayStyle): LinearLayout {
         val row = LinearLayout(activity).apply {

@@ -134,7 +134,8 @@ class LyricOverlayService : Service() {
         val style = app.settings.overlay
         val metrics = resources.displayMetrics
         val overlayView = OverlayLyricsView(this).apply {
-            maxWidthPx = (metrics.widthPixels * 0.8f).toInt()
+            maxWidthPx = metrics.widthPixels
+            fixedWidthPx = overlayWidthPx(metrics.widthPixels)
             applyStyle(style)
             onTap = { openApp() }
             onDrag = { dx, dy -> moveBy(dx, dy) }
@@ -185,7 +186,8 @@ class LyricOverlayService : Service() {
         val current = view ?: return
         val style = app.settings.overlay
         val metrics = resources.displayMetrics
-        current.maxWidthPx = (metrics.widthPixels * 0.8f).toInt()
+        current.maxWidthPx = metrics.widthPixels
+        current.fixedWidthPx = overlayWidthPx(metrics.widthPixels)
         current.applyStyle(style)
         val p = params ?: return
         p.flags = if (style.locked) {
@@ -208,8 +210,10 @@ class LyricOverlayService : Service() {
         if (current.width <= 0 || current.height <= 0) return
         val metrics = resources.displayMetrics
         val style = app.settings.overlay
-        p.x = ((metrics.widthPixels - current.width) * style.centerX).toInt()
-        p.y = ((metrics.heightPixels - current.height) * style.centerY).toInt()
+        p.x = (metrics.widthPixels * style.leftFraction).toInt()
+            .coerceIn(0, (metrics.widthPixels - current.width).coerceAtLeast(0))
+        p.y = (metrics.heightPixels * style.topFraction).toInt()
+            .coerceIn(0, (metrics.heightPixels - current.height).coerceAtLeast(0))
         try {
             windowManager.updateViewLayout(current, p)
         } catch (_: Exception) {
@@ -234,11 +238,9 @@ class LyricOverlayService : Service() {
         val current = view ?: return
         val p = params ?: return
         val metrics = resources.displayMetrics
-        val width = (metrics.widthPixels - current.width).coerceAtLeast(1)
-        val height = (metrics.heightPixels - current.height).coerceAtLeast(1)
         app.saveOverlayPosition(
-            centerX = (p.x.toFloat() / width),
-            centerY = (p.y.toFloat() / height),
+            leftFraction = p.x.toFloat() / metrics.widthPixels.coerceAtLeast(1),
+            topFraction = p.y.toFloat() / metrics.heightPixels.coerceAtLeast(1),
         )
     }
 
@@ -296,6 +298,12 @@ class LyricOverlayService : Service() {
             Diagnostics.log("[Overlay] 打开主界面失败：$error")
         }
     }
+
+    /** 窗口固定宽度：屏幕宽度 × 设置里的百分比。 */
+    private fun overlayWidthPx(screenWidth: Int): Int =
+        (screenWidth * app.settings.overlay.widthPercent / 100f)
+            .toInt()
+            .coerceIn(screenWidth / 4, screenWidth)
 
     private fun overlayWindowType(): Int =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

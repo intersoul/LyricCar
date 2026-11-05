@@ -63,7 +63,7 @@
 - 左栏标题固定显示歌名：不跟着歌词一句句跳；半截插进来听的歌不会把当时那句歌词当成歌名（从头放一遍才记）。
 - 歌词库自动清理：每次启动把「不到 5 句」或「只覆盖 10 秒以内」的记录删掉 —— 列表里滑过去、没完整听的歌不用占地方；自己导入的不动。
 - 外观跟随系统：设置 → 外观选「跟随系统」，车机切白天 / 夜间模式时 App 自己换浅色 / 深色。比亚迪的框架会吞掉非白名单 App 的 uimode 变更，所以这里监听车机的 `ui_night_mode` 设置，切了立刻重建界面。
-- **悬浮歌词（桌面歌词）**：设置 → 悬浮歌词，把当前几句歌词浮在导航 / 桌面上面，LyricCar 自己在前台时自动隐藏。可调显示行数（1 / 2 / 3 / 5）、字号、当前句颜色、底衬（无 / 淡 / 深）；拖动换位置、松手记住，可锁定后点击穿透到下面的导航，点一下回到 LyricCar。前台服务维持，App 退到后台歌词照常滚动。
+- **悬浮歌词（桌面歌词）**：设置 → 悬浮歌词，把当前几句歌词浮在导航 / 桌面上面，LyricCar 自己在前台时自动隐藏。可调显示行数（1 / 2 / 3 / 5）、字号、当前句颜色、底衬（无 / 淡 / 深）、**文字黑边描边（无 / 细 / 粗）**、**固定窗口宽度（30%~95%）**；拖动换位置、松手记住，可锁定后点击穿透到下面的导航，点一下回到 LyricCar。前台服务维持，App 退到后台歌词照常滚动。
 - 关于面板：版本号、开发者、GitHub 地址、版权声明，链接可一键打开 / 复制。
 - 不锁横屏；除悬浮歌词的「显示在其他应用上层」外不申请多余权限（只在打开悬浮歌词时申请，Android 10+ 导出不需要存储权限）。
 
@@ -141,16 +141,16 @@ app/src/main/res/                     主题、颜色、应用名、启动图标
 # 本机 Android Studio 自带 JBR（没有单独装 JDK 时）
 export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 
-./gradlew assembleDebug      # app/build/outputs/apk/debug/LyricCar v2.6.1-debug.apk
-./gradlew assembleRelease    # app/build/outputs/apk/release/LyricCar v2.6.1.apk
+./gradlew assembleDebug      # app/build/outputs/apk/debug/LyricCar v2.6.2-debug.apk
+./gradlew assembleRelease    # app/build/outputs/apk/release/LyricCar v2.6.2.apk
 ```
 
 APK 文件名按 `LyricCar v{版本号}` 生成，版本号在 `app/build.gradle.kts` 顶部的 `appVersionName` 里改一处，「关于」面板显示的是同一个值。
 
-本工程没有 native 库，生成的 APK 约 0.8 MB；直接安装 `LyricCar v2.6.1.apk` 即可。文件名带空格，命令行安装要加引号：
+本工程没有 native 库，生成的 APK 约 0.8 MB；直接安装 `LyricCar v2.6.2.apk` 即可。文件名带空格，命令行安装要加引号：
 
 ```bash
-adb install -r "app/build/outputs/apk/release/LyricCar v2.6.1.apk"
+adb install -r "app/build/outputs/apk/release/LyricCar v2.6.2.apk"
 ```
 
 发布签名口令放在 `app/key.properties`（已被 `.gitignore` 排除，模板见 `app/key.properties.example`）。没配这个文件时 release 会退回 debug 签名，只够本地跑通构建，**不要**拿那种包当正式包。
@@ -235,9 +235,9 @@ adb install -r "app/build/outputs/apk/release/LyricCar v2.6.1.apk"
 
 设置 → 悬浮歌词，把当前几句歌词浮在**导航 / 桌面**上面 —— 高德在底下指路，歌词在上面滚动，两个同时用。
 
-- **开关**：第一次打开要先给「显示在其他应用上层」（`SYSTEM_ALERT_WINDOW`）；系统设置里没有这一页时用 adb：
-  `adb shell appops set com.homeweb.lyriccar SYSTEM_ALERT_WINDOW allow`
-- **样式**：显示行数（1 / 2 / 3 / 5）、字号（小 / 标准 / 大 / 特大）、当前句颜色（主题色 / 暖黄 / 粉 / 绿 / 橙 / 高对比）、底衬（无 / 淡 / 深）；面板里有实时预览。长句同样按宽度换行。
+- **开关**：第一次打开要先给「显示在其他应用上层」（`SYSTEM_ALERT_WINDOW`）。本车机（BYD）有这一页：`com.byd.systemsettings/.permission.view.DrawOverlayDetailsActivity`，面板里的「去开启悬浮窗权限」会直接打开它；实在找不到页面时用 adb：`adb shell appops set com.homeweb.lyriccar SYSTEM_ALERT_WINDOW allow`
+- **样式**：显示行数（1 / 2 / 3 / 5）、字号（小 / 标准 / 大 / 特大）、当前句颜色（主题色 / 暖黄 / 粉 / 绿 / 橙 / 高对比）、底衬（无 / 淡 / 深）、文字描边（无 / 细 / 粗）；面板里有实时预览。底衬选「无」时建议加「细 / 粗」黑边，浅色地图上也清楚。
+- **宽度固定**：窗口宽度是手动设的百分比（30%~95%），不跟歌词长短变；长句在窗口里换行。以前「一句长一句短」会把窗口左右拽，现在不会了。窗口位置按左上角比例存，改宽度、切歌都不会跳。
 - **位置**：手指拖动悬浮窗，松手自动记住（按屏幕比例存，换分辨率也能还原）；「回到屏幕上方」一键复位。
 - **锁定**：锁定后悬浮窗不再接收点击，直接穿透到下面的导航；要挪位置先回设置里关掉。
 - **点一下**悬浮窗回到 LyricCar；LyricCar 自己在界面里时悬浮窗会自动隐藏，不挡设置面板。
@@ -269,7 +269,8 @@ adb install -r "app/build/outputs/apk/release/LyricCar v2.6.1.apk"
 - 蓝牙服务发现：本车候选 1 个（`com.android.bluetooth/.a2dpsink.mbs.A2dpMediaBrowserService`），诊断日志列出候选、当前候选和失败轮次；
 - 长句换行：把窗口缩到 360×640（`wm size 360x640`）后，`Whatever happens don't let go of my hand` 自动拆成两行显示（两行都完整，没有截断）；设置面板的预览里长句同样换行；
 - 外观跟随系统：选「跟随系统」后，`adb shell cmd uimode night yes/no` 切换车机昼夜模式，App 立刻重建为深色 / 浅色（日志 `车机昼夜模式变了：夜间/白天`）—— BYD 会跳过非白名单 App 的 uimode 变更，所以改成了监听 `ui_night_mode`；
-- 悬浮歌词：授权后打开开关，回到桌面 / 高德都能看到歌词浮在上面（3 行 / 5 行、字号、暖黄、深底衬逐个切换生效，面板预览同步）；
+- 悬浮歌词：授权后打开开关，回到桌面 / 高德都能看到歌词浮在上面（3 行 / 5 行、字号、暖黄、深底衬逐个切换生效，面板预览同步）；授权页实测能从面板直接打开（BYD `DrawOverlayDetailsActivity`），在页面上打开开关后回到 App 会自动把悬浮歌词开起来；
+- 描边 + 固定宽度：底衬「无」+ 描边「粗」压在浅色高德地图上清晰可读；窗口宽度拖到 44% 后长句在窗口内换行，窗口本身不再随歌词长短左右跳；设置里的宽度滑杆和描边 chips 生效、面板预览同步；
 - 悬浮窗拖动后松手记住位置，杀掉 App 重开仍在原位置；锁定后点击穿透到导航；单击悬浮窗回到 LyricCar；LyricCar 在前台时悬浮窗隐藏；
 - BYD 限制实测：不在「加速白名单」时按 Home 会被 `RapidModeService` 强杀（日志 `kill3rdApp`），加入白名单后正常；开机不会自动恢复（日志 `ssc_skip ... ignored`），打开一次 App 即可。
 
@@ -313,7 +314,7 @@ App 里所有 `[LyricCar]` 日志同时进 logcat 和 `diagnostics.log`。启动
 
 ```
 ──── 环境自查 ────
-App 版本 2.6.1
+App 版本 2.6.2
 ✓ 通知使用权：已授予
 监听组件：com.homeweb.lyriccar/com.homeweb.lyriccar.MediaSessionListenerService
 ──── 系统与会话 ────

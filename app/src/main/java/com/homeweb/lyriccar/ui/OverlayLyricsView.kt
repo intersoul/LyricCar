@@ -37,8 +37,17 @@ class OverlayLyricsView(context: Context) : View(context) {
     private var layoutDirty = true
     private var layoutLimit = -1
 
-    /** 窗口最大宽度（屏幕宽度的 80%），由服务设置。 */
+    /** 宽度上限（屏幕宽度），由服务设置；只在自动宽度时用。 */
     var maxWidthPx: Int = 0
+
+    /** 固定窗口宽度（像素），由服务按设置里的百分比算好；0 = 跟内容走。 */
+    var fixedWidthPx: Int = 0
+        set(value) {
+            if (field == value) return
+            field = value
+            layoutDirty = true
+            requestLayout()
+        }
 
     var onDrag: ((dx: Float, dy: Float) -> Unit)? = null
     var onDragEnd: (() -> Unit)? = null
@@ -104,13 +113,21 @@ class OverlayLyricsView(context: Context) : View(context) {
         rows = result
         contentHeight = result.sumOf { it.height.toDouble() }.toFloat() +
             gap * (result.size - 1).coerceAtLeast(0) + side * 2
-        contentWidth = (naturalWidth + side * 2).coerceAtMost(maxWidth.toFloat())
+        contentWidth = if (fixedWidthPx > 0) {
+            maxWidth.toFloat()
+        } else {
+            (naturalWidth + side * 2).coerceAtMost(maxWidth.toFloat())
+        }
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val limit = if (maxWidthPx > 0) maxWidthPx else MeasureSpec.getSize(widthMeasureSpec)
+        val limit = when {
+            fixedWidthPx > 0 -> fixedWidthPx
+            maxWidthPx > 0 -> maxWidthPx
+            else -> MeasureSpec.getSize(widthMeasureSpec)
+        }
         ensureLayout(limit)
-        val width = contentWidth.toInt().coerceAtLeast(dp(1f).toInt())
+        val width = if (fixedWidthPx > 0) fixedWidthPx else contentWidth.toInt().coerceAtLeast(dp(1f).toInt())
         setMeasuredDimension(width, contentHeight.toInt().coerceAtLeast(1))
     }
 
@@ -127,12 +144,12 @@ class OverlayLyricsView(context: Context) : View(context) {
         }
 
         val gap = dp(ROW_GAP_DP)
+        val stroke = dp(style.outline.widthDp * style.font.scale)
         var top = side
         var index = 0
         for (row in rows) {
             paint.textSize = row.textSize
             paint.typeface = if (row.active) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
-            paint.color = if (row.active) activeColor() else inactiveColor()
             paint.textAlign = Paint.Align.CENTER
             if (backdrop == 0) {
                 paint.setShadowLayer(dp(4f), 0f, dp(1f), 0xAA000000.toInt())
@@ -140,6 +157,14 @@ class OverlayLyricsView(context: Context) : View(context) {
                 paint.clearShadowLayer()
             }
             val baseline = top + row.height / 2f - (paint.ascent() + paint.descent()) / 2f
+            if (stroke > 0f) {
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = stroke
+                paint.color = Color.BLACK
+                canvas.drawText(row.text, width / 2f, baseline, paint)
+            }
+            paint.style = Paint.Style.FILL
+            paint.color = if (row.active) activeColor() else inactiveColor()
             canvas.drawText(row.text, width / 2f, baseline, paint)
             top += row.height
             index++
